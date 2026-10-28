@@ -1,0 +1,7 @@
+ultralytics>=8.1.0
+opencv-python>=4.8.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+numpy>=1.24.0
+# Optional: Intel OpenVINO for ~2-3x CPU inference speedup
+# openvino>=2023.2
