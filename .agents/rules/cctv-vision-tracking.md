@@ -22,3 +22,13 @@
 
 ## 5. Pitfall of Pre-Trained Fall Classifiers
 - Do not deploy generic single-person pre-trained fall classification weights on wide-angle multi-person CCTV. Geometric temporal tracking anchored on individual standing baselines delivers superior precision and zero false positives.
+
+## 6. Continuous Git Synchronization Rule
+- After each plan implementation that is successful and verified, always stage changes, commit with a concise descriptive message, and push to the remote repository:
+  ```bash
+  git add .
+  git commit -m "feat: <summary of successful plan>"
+  git push -u origin main
+  ```
+- Target repository: `https://github.com/Rib4ko/Sahara-Smart-2.0.git` (branch `main`).
+
