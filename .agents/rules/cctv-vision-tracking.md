@@ -23,7 +23,24 @@
 ## 5. Pitfall of Pre-Trained Fall Classifiers
 - Do not deploy generic single-person pre-trained fall classification weights on wide-angle multi-person CCTV. Geometric temporal tracking anchored on individual standing baselines delivers superior precision and zero false positives.
 
-## 6. Continuous Git Synchronization Rule
+## 6. Multi-Camera CPU/GIL Saturation & Stream Decoupling
+- In surveillance dashboards streaming multi-camera grids from a Python/FastAPI backend, never re-encode and stream multiple concurrent 30 FPS MJPEG endpoints in Python.
+- Decouple ambient/simulation background feeds: Render them entirely client-side via HTML5 2D Canvas or looping HTML5 video (0% backend CPU / 0 GIL overhead).
+- Allocate 100% of Python thread priority and model inference strictly to the dedicated active detection/search feed (e.g., CAM 04).
+
+## 7. Part-Based Person Re-Identification (Re-ID) for Low-Pixel CCTV
+- In public street CCTV, do not rely on facial recognition due to extreme resolution deficit (<20px face width), steep downward angles, motion blur, and privacy regulations (CNDP Law 09-08).
+- Decompose person bounding boxes into two distinct anatomical regions:
+  1. Upper Torso (20% to 55% vertical height)
+  2. Lower Legs (55% to 92% vertical height)
+- Apply center-weighted Gaussian spatial masking (inner 70% width/height) to discard surrounding sidewalk, wall, or road clutter.
+- Feature extraction must combine:
+  - Cyclic Hue angle moments ($\cos(H), \sin(H)$) to handle red wraparound at 0°/180°.
+  - CIE-Lab color moments (perceptually uniform lightness & chromaticity $a^*, b^*$).
+  - Gaussian-smoothed 16-bin Hue histogram.
+- Require sustained temporal agreement (e.g., 3 consecutive frames exceeding threshold) before acquiring a target lock.
+
+## 8. Continuous Git Synchronization Rule
 - After each plan implementation that is successful and verified, always stage changes, commit with a concise descriptive message, and push to the remote repository:
   ```bash
   git add .
@@ -31,4 +48,5 @@
   git push -u origin main
   ```
 - Target repository: `https://github.com/Rib4ko/Sahara-Smart-2.0.git` (branch `main`).
+
 
