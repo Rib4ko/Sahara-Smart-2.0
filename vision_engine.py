@@ -92,18 +92,33 @@ def crop_to_base64(crop, max_size=120):
     return "data:image/jpeg;base64," + base64.b64encode(buf).decode("utf-8")
 
 
+def hex_to_bgr(hex_str, default=(128, 128, 128)):
+    try:
+        hex_str = str(hex_str).lstrip('#')
+        if len(hex_str) == 6:
+            r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
+            return (b, g, r)
+    except Exception:
+        pass
+    return default
+
+
 # ══════════════════════════════════════════════════════════════
 #  Tifawt-Guard: Part-Based Person Re-Identification (Re-ID)
 # ══════════════════════════════════════════════════════════════
 class TifawtReIDMatcher:
     """
-    Part-Based Person Re-Identification (Re-ID) Engine for Mode 2 (Tifawt-Guard).
+    3-Part Person Re-Identification (Re-ID) Engine for Mode 2 (Tifawt-Guard).
     Solves CCTV low-pixel facial blur using:
-    1. Spatial part decomposition (Upper Torso 20%-55%, Lower Body 55%-92%)
+    1. Spatial part decomposition:
+       - Head / Cap: 0% to 22% vertical height (critical for detecting red hats / headwear)
+       - Upper Torso: 22% to 58% vertical height (shirts, jackets, hoodies)
+       - Lower Legs: 58% to 94% vertical height (jeans, shorts, trackpants)
     2. Center-weighted Gaussian spatial masking (discards background asphalt/sidewalk clutter)
     3. Dual illumination-invariant color spaces:
-       - HSV (16 Hue bins, 8 Saturation bins with cyclic angle moments cos/sin)
-       - CIE-Lab (16 L bins, 16 a* bins, 16 b* bins)
+       - HSV with cv2.bitwise_or for dual-band red wraparound [0,12] and [168,180]
+       - Cyclic Hue angle moments (cos, sin)
+       - CIE-Lab perceptually uniform color moments (L, a*, b*)
     4. Dominant color hex swatch extraction for operator UI preview
     5. Aspect ratio & child/minor scale prior
     6. Multi-part weighted cosine similarity
@@ -112,7 +127,7 @@ class TifawtReIDMatcher:
     def __init__(self, threshold=0.65):
         self.threshold = threshold
         self.reference_target = None
-        self.child_prior = False
+        self.child_prior = True
 
     def has_target(self):
         return self.reference_target is not None
@@ -124,33 +139,53 @@ class TifawtReIDMatcher:
         self.threshold = max(0.40, min(0.95, float(threshold)))
 
     def extract_features(self, crop):
-        """Extract multi-part spatial color signature from a person crop."""
+        """Extract 3-part spatial color signature (Head 0-22%, Torso 22-58%, Legs 58-94%) from a person crop."""
         if crop is None or crop.size == 0:
             return None
         h, w = crop.shape[:2]
         if h < 24 or w < 12:
             return None
 
-        # 1. Upper Torso (20% to 55% vertical height)
-        y_t1, y_t2 = int(h * 0.20), int(h * 0.55)
+        # 1. Head / Cap region (0% to 22% vertical height)
+        y_h1, y_h2 = 0, int(h * 0.22)
+        head_crop = crop[y_h1:y_h2, :]
+
+        # 2. Upper Torso (22% to 58% vertical height)
+        y_t1, y_t2 = int(h * 0.22), int(h * 0.58)
         torso_crop = crop[y_t1:y_t2, :]
 
-        # 2. Lower Body (55% to 92% vertical height)
-        y_l1, y_l2 = int(h * 0.55), int(h * 0.92)
+        # 3. Lower Body / Legs (58% to 94% vertical height)
+        y_l1, y_l2 = int(h * 0.58), int(h * 0.94)
         legs_crop = crop[y_l1:y_l2, :]
 
         def get_part_signature(part):
             ph, pw = part.shape[:2]
-            if ph < 4 or pw < 4:
+            if ph < 3 or pw < 3:
                 return np.zeros(32, dtype=np.float32), "#64748b"
 
             # Center crop to reduce surrounding sidewalk/background
-            c_part = part[int(ph * 0.15):int(ph * 0.85), int(pw * 0.15):int(pw * 0.85)]
+            c_part = part[int(ph * 0.12):int(ph * 0.88), int(pw * 0.12):int(pw * 0.88)]
             if c_part.size == 0:
                 c_part = part
 
             hsv = cv2.cvtColor(c_part, cv2.COLOR_BGR2HSV).astype(np.float32)
+            c_part_uint8 = np.clip(c_part, 0, 255).astype(np.uint8)
+            hsv_uint8 = cv2.cvtColor(c_part_uint8, cv2.COLOR_BGR2HSV)
             lab = cv2.cvtColor(c_part, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+            # Dual-band Red wraparound via cv2.bitwise_or
+            mask_low = cv2.inRange(hsv_uint8, np.array([0, 50, 45]), np.array([12, 255, 255]))
+            mask_high = cv2.inRange(hsv_uint8, np.array([168, 50, 45]), np.array([180, 255, 255]))
+            red_mask = cv2.bitwise_or(mask_low, mask_high)
+            red_ratio = float(cv2.countNonZero(red_mask)) / max(1.0, float(c_part.shape[0] * c_part.shape[1]))
+
+            # Yellow/Amber mask (H in [16, 38], S > 45)
+            yellow_mask = cv2.inRange(hsv_uint8, np.array([16, 45, 45]), np.array([38, 255, 255]))
+            yellow_ratio = float(cv2.countNonZero(yellow_mask)) / max(1.0, float(c_part.shape[0] * c_part.shape[1]))
+
+            # Blue / Denim mask (H in [95, 135], S > 35)
+            blue_mask = cv2.inRange(hsv_uint8, np.array([95, 35, 35]), np.array([135, 255, 255]))
+            blue_ratio = float(cv2.countNonZero(blue_mask)) / max(1.0, float(c_part.shape[0] * c_part.shape[1]))
 
             # Cyclic Hue moments (handles red wraparound at 0/180)
             h_cos = np.cos(hsv[:, :, 0] * np.pi / 90.0)
@@ -171,7 +206,8 @@ class TifawtReIDMatcher:
 
             vec = np.concatenate([
                 [mean_h_cos, mean_h_sin, mean_s, std_s, mean_v, std_v,
-                 mean_l, std_l, mean_a, std_a, mean_b, std_b],
+                 mean_l, std_l, mean_a, std_a, mean_b, std_b,
+                 red_ratio, yellow_ratio, blue_ratio],
                 hist_h
             ]).astype(np.float32)
             norm = np.linalg.norm(vec)
@@ -183,19 +219,65 @@ class TifawtReIDMatcher:
 
             return vec, hex_color
 
+        h_vec, h_hex = get_part_signature(head_crop)
         t_vec, t_hex = get_part_signature(torso_crop)
         l_vec, l_hex = get_part_signature(legs_crop)
         ar = float(w) / max(float(h), 1.0)
 
         return {
+            "head_vec": h_vec,
             "torso_vec": t_vec,
             "legs_vec": l_vec,
+            "head_hex": h_hex,
             "torso_hex": t_hex,
             "legs_hex": l_hex,
             "aspect_ratio": ar,
             "height": h,
             "width": w
         }
+
+    def set_parametric_target(self, label, head_hex, torso_hex, legs_hex, has_head_item=True, child_prior=True):
+        """
+        Synthesize reference target from structured parameters (e.g. parsed from Groq LLM).
+        Renders a 3-part spatial candidate with natural textile texture noise.
+        """
+        h_bgr = hex_to_bgr(head_hex, (30, 30, 200))
+        t_bgr = hex_to_bgr(torso_hex, (25, 180, 235))
+        l_bgr = hex_to_bgr(legs_hex, (190, 85, 35))
+
+        h, w = 180, 70
+        img = np.zeros((h, w, 3), dtype=np.uint8)
+        img[:int(h * 0.22), :] = h_bgr
+        img[int(h * 0.22):int(h * 0.58), :] = t_bgr
+        img[int(h * 0.58):int(h * 0.94), :] = l_bgr
+        img[int(h * 0.94):, :] = (35, 35, 35)
+
+        noise = np.random.randint(-8, 8, img.shape, dtype=np.int16)
+        img = np.clip(img.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+
+        feats = self.extract_features(img)
+        if feats is None:
+            return False, "Failed to compile parametric features"
+
+        feats["head_hex"] = head_hex
+        feats["torso_hex"] = torso_hex
+        feats["legs_hex"] = legs_hex
+
+        thumb_b64 = crop_to_base64(img, max_size=160)
+        self.child_prior = bool(child_prior)
+        self.reference_target = {
+            "label": label,
+            "features": feats,
+            "thumbnail": thumb_b64,
+            "head_hex": head_hex,
+            "torso_hex": torso_hex,
+            "legs_hex": legs_hex,
+            "has_head_item": bool(has_head_item),
+            "aspect_ratio": feats["aspect_ratio"],
+            "timestamp": datetime.now().strftime("%H:%M:%S")
+        }
+        logger.info(f"Tifawt-Guard parametric target set: {label} (Head: {head_hex}, Torso: {torso_hex}, Legs: {legs_hex})")
+        return True, "Parametric target active"
 
     def set_reference_target(self, image, label="Target Subject", det_model=None):
         """
@@ -232,27 +314,33 @@ class TifawtReIDMatcher:
             "label": label,
             "features": feats,
             "thumbnail": thumb_b64,
+            "head_hex": feats["head_hex"],
             "torso_hex": feats["torso_hex"],
             "legs_hex": feats["legs_hex"],
+            "has_head_item": True,
             "aspect_ratio": feats["aspect_ratio"],
             "timestamp": datetime.now().strftime("%H:%M:%S")
         }
-        logger.info(f"Tifawt-Guard reference target set: {label} (Torso: {feats['torso_hex']}, Legs: {feats['legs_hex']})")
+        logger.info(f"Tifawt-Guard reference target set: {label} (Head: {feats['head_hex']}, Torso: {feats['torso_hex']}, Legs: {feats['legs_hex']})")
         return True, "Target registered successfully"
 
     def compute_similarity(self, candidate_crop):
         """
         Compute multi-part weighted similarity against reference target.
-        Returns: (overall_sim, torso_sim, legs_sim)
+        Returns: (overall_sim, head_sim, torso_sim, legs_sim)
         """
         if not self.has_target() or candidate_crop is None:
-            return 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
         c_feats = self.extract_features(candidate_crop)
         if c_feats is None:
-            return 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
         r_feats = self.reference_target["features"]
+
+        # Head cosine similarity
+        sim_head = float(np.dot(c_feats["head_vec"], r_feats["head_vec"]))
+        sim_head = max(0.0, min(1.0, sim_head))
 
         # Torso cosine similarity
         sim_torso = float(np.dot(c_feats["torso_vec"], r_feats["torso_vec"]))
@@ -262,8 +350,12 @@ class TifawtReIDMatcher:
         sim_legs = float(np.dot(c_feats["legs_vec"], r_feats["legs_vec"]))
         sim_legs = max(0.0, min(1.0, sim_legs))
 
-        # Weighted composite: Torso 55%, Legs 45%
-        overall = 0.55 * sim_torso + 0.45 * sim_legs
+        # Weighted composite: Head 25%, Torso 45%, Legs 30% if headwear active
+        has_head_item = self.reference_target.get("has_head_item", True)
+        if has_head_item:
+            overall = 0.25 * sim_head + 0.45 * sim_torso + 0.30 * sim_legs
+        else:
+            overall = 0.10 * sim_head + 0.55 * sim_torso + 0.35 * sim_legs
 
         # Optional child prior: penalize if candidate aspect ratio is tall/slender adult
         if self.child_prior:
@@ -271,7 +363,7 @@ class TifawtReIDMatcher:
             if c_ar < 0.28:
                 overall *= 0.85
 
-        return float(overall), float(sim_torso), float(sim_legs)
+        return float(overall), float(sim_head), float(sim_torso), float(sim_legs)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -464,6 +556,7 @@ class PersonTracker:
                     'recovery_frames': 0,
                     'lost': 0,
                     'reid_sim': 0.0,
+                    'reid_head_sim': 0.0,
                     'reid_torso_sim': 0.0,
                     'reid_legs_sim': 0.0,
                     'reid_match_count': 0,
@@ -627,50 +720,83 @@ class SahraEyeEngine:
         logger.info("Cleared all confirmed victims and active alerts")
 
     # ── Tifawt-Guard Target Management ───────────────────────
-    def _create_synthetic_target(self, torso_bgr, legs_bgr, h=180, w=70):
+    def _create_synthetic_target(self, head_bgr, torso_bgr, legs_bgr, h=180, w=70):
         img = np.zeros((h, w, 3), dtype=np.uint8)
-        img[:int(h * 0.20), :] = (180, 150, 130)        # Head
-        img[int(h * 0.20):int(h * 0.55), :] = torso_bgr  # Torso
-        img[int(h * 0.55):int(h * 0.92), :] = legs_bgr   # Legs
-        img[int(h * 0.92):, :] = (35, 35, 35)            # Shoes
-        noise = np.random.randint(-10, 10, img.shape, dtype=np.int16)
+        img[:int(h * 0.22), :] = head_bgr         # Head / Cap
+        img[int(h * 0.22):int(h * 0.58), :] = torso_bgr  # Torso / Shirt
+        img[int(h * 0.58):int(h * 0.94), :] = legs_bgr   # Legs / Pants
+        img[int(h * 0.94):, :] = (35, 35, 35)            # Shoes
+        noise = np.random.randint(-8, 8, img.shape, dtype=np.int16)
         img = np.clip(img.astype(np.int16) + noise, 0, 255).astype(np.uint8)
         return img
 
     def _init_default_preset(self):
-        """Initialize default missing person search preset (Blue Hoodie & Dark Pants)."""
+        """Initialize default missing person search preset (Missing Kid: Red Cap, Yellow Shirt & Jeans)."""
         self.set_target_preset("preset_1")
 
     def set_target_preset(self, preset_id):
-        """Set one of the fast demo presets."""
+        """Set one of the fast demo presets (Zero-latency preset bypass)."""
         presets = {
             "preset_1": {
-                "label": "Missing Boy — Blue Hoodie & Dark Pants",
-                "torso_bgr": (200, 80, 25),    # Vibrant Royal Blue (BGR)
-                "legs_bgr": (35, 35, 45),       # Dark Slate Pants (BGR)
+                "label": "Missing Kid: Red Cap, Yellow Shirt & Jeans",
+                "head_hex": "#dc2626",
+                "torso_hex": "#eab308",
+                "legs_hex": "#2563eb",
+                "has_head_item": True,
                 "child": True,
             },
             "preset_2": {
-                "label": "Missing Child — Red Jacket & Blue Jeans",
-                "torso_bgr": (30, 35, 215),     # Crimson Red (BGR)
-                "legs_bgr": (180, 95, 35),      # Denim Blue (BGR)
+                "label": "Missing Boy: Blue Hoodie & Dark Pants",
+                "head_hex": "#475569",
+                "torso_hex": "#1d4ed8",
+                "legs_hex": "#1e293b",
+                "has_head_item": False,
                 "child": True,
             },
             "preset_3": {
-                "label": "Student — Yellow/Green Sports Jersey",
-                "torso_bgr": (30, 200, 180),    # Yellow/Green Amber (BGR)
-                "legs_bgr": (25, 25, 25),       # Black Shorts (BGR)
+                "label": "Missing Child: Red Jacket & Blue Jeans",
+                "head_hex": "#475569",
+                "torso_hex": "#dc2626",
+                "legs_hex": "#1d4ed8",
+                "has_head_item": False,
+                "child": True,
+            },
+            "preset_4": {
+                "label": "Student: Sports Jersey & Shorts",
+                "head_hex": "#475569",
+                "torso_hex": "#ca8a04",
+                "legs_hex": "#111827",
+                "has_head_item": False,
                 "child": True,
             }
         }
         p = presets.get(preset_id, presets["preset_1"])
-        img = self._create_synthetic_target(p["torso_bgr"], p["legs_bgr"])
-        self.reid_matcher.child_prior = p.get("child", False)
-        ok, msg = self.reid_matcher.set_reference_target(img, label=p["label"])
-        self.alerts.clear()
-        self._logged_alert_keys.clear()
+        ok, msg = self.set_parametric_target(
+            label=p["label"],
+            head_hex=p["head_hex"],
+            torso_hex=p["torso_hex"],
+            legs_hex=p["legs_hex"],
+            has_head_item=p.get("has_head_item", True),
+            child_prior=p.get("child", True)
+        )
         logger.info(f"Target preset selected: {p['label']}")
         return ok, p["label"]
+
+    def set_parametric_target(self, label, head_hex, torso_hex, legs_hex, has_head_item=True, child_prior=True):
+        """Set target from structured parameters (from Groq LLM or preset bypass)."""
+        ok, msg = self.reid_matcher.set_parametric_target(
+            label=label,
+            head_hex=head_hex,
+            torso_hex=torso_hex,
+            legs_hex=legs_hex,
+            has_head_item=has_head_item,
+            child_prior=child_prior
+        )
+        if ok:
+            self.alerts.clear()
+            self._logged_alert_keys.clear()
+            logger.info(f"Target set via parameters: {label}")
+        return ok, msg
 
     def set_target_photo(self, image, label="Uploaded Reference Photo"):
         """Set reference target from an uploaded image (using YOLO auto-crop)."""
@@ -1098,16 +1224,18 @@ class SahraEyeEngine:
 
                 tr = self.tracker.tracks.get(track_id)
                 if tr is not None and self.reid_matcher.has_target():
-                    sim, sim_t, sim_l = self.reid_matcher.compute_similarity(crop)
+                    sim, sim_h, sim_t, sim_l = self.reid_matcher.compute_similarity(crop)
 
                     # Exponential smoothing across track to prevent single-frame noise
                     prev_sim = tr.get("reid_sim", 0.0)
                     smoothed_sim = 0.65 * sim + 0.35 * prev_sim if prev_sim > 0 else sim
                     tr["reid_sim"] = smoothed_sim
+                    tr["reid_head_sim"] = sim_h
                     tr["reid_torso_sim"] = sim_t
                     tr["reid_legs_sim"] = sim_l
 
                     persons[i]["similarity"] = smoothed_sim
+                    persons[i]["head_sim"] = sim_h
                     persons[i]["torso_sim"] = sim_t
                     persons[i]["legs_sim"] = sim_l
 
@@ -1138,15 +1266,17 @@ class SahraEyeEngine:
                                 "zone_name": "Sector Al-Quds / CCTV-04",
                                 "timestamp": datetime.now().strftime("%H:%M:%S"),
                                 "similarity": round(smoothed_sim * 100, 1),
+                                "head_sim": round(sim_h * 100, 1),
                                 "torso_sim": round(sim_t * 100, 1),
                                 "legs_sim": round(sim_l * 100, 1),
                                 "message": f"🎯 TARGET ACQUIRED ({round(smoothed_sim*100, 1)}%) — Person #{track_id}",
-                                "details": f"Torso: {round(sim_t*100, 1)}% | Legs: {round(sim_l*100, 1)}% | Zone: Sector Al-Quds",
+                                "details": f"Head: {round(sim_h*100, 1)}% | Torso: {round(sim_t*100, 1)}% | Legs: {round(sim_l*100, 1)}%",
                                 "action": "Awaiting Operator Dispatch / Confirmation",
                                 "candidate_thumb": b64_thumb,
                                 "thumbnail": b64_thumb,
                                 "reference_thumb": target_ref.get("thumbnail", ""),
                                 "target_label": target_ref.get("label", "Target"),
+                                "target_head_hex": target_ref.get("head_hex", "#dc2626"),
                                 "target_torso_hex": target_ref.get("torso_hex", "#64748b"),
                                 "target_legs_hex": target_ref.get("legs_hex", "#64748b"),
                                 "status": "UNACKNOWLEDGED"
@@ -1300,10 +1430,11 @@ class SahraEyeEngine:
                 cv2.rectangle(frame, (x1, lbl_y - 20), (x1 + lbl_sz[0] + 12, lbl_y + 4), (0, 180, 80), -1)
                 cv2.putText(frame, lbl, (x1 + 6, lbl_y - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
 
-                # Torso / Leg match indicators
-                t_lbl = f"Torso: {p.get('torso_sim', 0)*100:.0f}%"
-                l_lbl = f"Legs: {p.get('legs_sim', 0)*100:.0f}%"
-                cv2.putText(frame, f"{t_lbl} | {l_lbl}", (x1, y2 + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 255), 1, cv2.LINE_AA)
+                # Head / Torso / Leg match indicators
+                h_lbl = f"Head:{p.get('head_sim', 0)*100:.0f}%"
+                t_lbl = f"Torso:{p.get('torso_sim', 0)*100:.0f}%"
+                l_lbl = f"Legs:{p.get('legs_sim', 0)*100:.0f}%"
+                cv2.putText(frame, f"{h_lbl} | {t_lbl} | {l_lbl}", (x1, y2 + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 255, 255), 1, cv2.LINE_AA)
             else:
                 # Normal pedestrian in Mode 2
                 if self.reid_matcher.has_target() and sim > 0.35:
@@ -1560,8 +1691,10 @@ class SahraEyeEngine:
             target_info = {
                 "label": rt.get("label", "Target"),
                 "thumbnail": rt.get("thumbnail", ""),
+                "head_hex": rt.get("head_hex", "#dc2626"),
                 "torso_hex": rt.get("torso_hex", "#64748b"),
                 "legs_hex": rt.get("legs_hex", "#64748b"),
+                "has_head_item": rt.get("has_head_item", True),
                 "aspect_ratio": round(rt.get("aspect_ratio", 0.35), 2),
                 "timestamp": rt.get("timestamp", "")
             }

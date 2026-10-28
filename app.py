@@ -16,6 +16,8 @@ import shutil
 import threading
 import time
 import logging
+import json
+import requests as req
 
 import cv2
 import uvicorn
@@ -29,6 +31,26 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO, format="[Sahra-Eye] %(levelname)s: %(message)s")
 logger = logging.getLogger("sahra-eye-server")
+
+# ── Load Groq API Key securely from environment or local .env (never committed) ──
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+if not GROQ_API_KEY:
+    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.exists(env_file):
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("GROQ_API_KEY="):
+                        GROQ_API_KEY = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        except Exception as e:
+            logger.warning(f"Could not read .env file: {e}")
+
+if GROQ_API_KEY:
+    logger.info("Groq API Key loaded securely from environment / .env")
+else:
+    logger.warning("GROQ_API_KEY not found in environment or .env")
 
 # ──────────────────────────────────────────────────────────────
 #  FastAPI Application
@@ -190,10 +212,147 @@ async def clear_alerts():
 
 
 # ── Tifawt-Guard (Mode 2) Endpoints ─────────────────────────
+@app.post("/search_by_description")
+async def search_by_description(request: Request):
+    """
+    Accept text description, query Groq LLM (openai/gpt-oss-20b),
+    extract structured 3-part attributes (Head, Torso, Legs), and activate search.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    description = body.get("description", "").strip()
+    if not description:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Description cannot be empty"})
+
+    if not GROQ_API_KEY:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "GROQ_API_KEY not configured in environment or .env"})
+
+    prompt = f"""Extract physical appearance search parameters for a missing person from this text description:
+"{description}"
+
+Return a strict JSON object with:
+- target_label: short descriptive title (e.g. "Missing Child - Red Cap & Yellow Shirt")
+- head_hex: hex color string (e.g. #dc2626)
+- head_item: description (e.g. "red cap")
+- has_head_item: boolean (true if cap, hat, beanie, hood, or hijab mentioned)
+- torso_hex: hex color string (e.g. #eab308)
+- torso_item: description (e.g. "yellow shirt")
+- legs_hex: hex color string (e.g. #2563eb)
+- legs_item: description (e.g. "blue jeans")
+- child_prior: boolean (true if child, kid, boy, girl, young, minor)
+- summary: one-sentence summary of the extracted appearance
+"""
+
+    t0 = time.time()
+    models_to_try = ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
+    groq_url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+
+    parsed_data = None
+    last_err = ""
+    for model_name in models_to_try:
+        try:
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": "You are an expert CCTV emergency dispatch search parser. Always output strictly valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.1
+            }
+            resp = req.post(groq_url, headers=headers, json=payload, timeout=8)
+            if resp.status_code == 200:
+                raw_content = resp.json()["choices"][0]["message"]["content"]
+                parsed_data = json.loads(raw_content)
+                logger.info(f"Groq LLM parsed search query using {model_name}: {parsed_data.get('target_label')}")
+                break
+            else:
+                last_err = f"HTTP {resp.status_code}: {resp.text}"
+        except Exception as e:
+            last_err = str(e)
+
+    if not parsed_data:
+        return JSONResponse(status_code=502, content={"status": "error", "message": f"Groq LLM query failed: {last_err}"})
+
+    label = parsed_data.get("target_label") or description[:40]
+    head_hex = parsed_data.get("head_hex", "#dc2626")
+    torso_hex = parsed_data.get("torso_hex", "#eab308")
+    legs_hex = parsed_data.get("legs_hex", "#2563eb")
+    has_head_item = bool(parsed_data.get("has_head_item", True))
+    child_prior = bool(parsed_data.get("child_prior", True))
+
+    if engine:
+        engine.set_parametric_target(
+            label=label,
+            head_hex=head_hex,
+            torso_hex=torso_hex,
+            legs_hex=legs_hex,
+            has_head_item=has_head_item,
+            child_prior=child_prior
+        )
+
+    return JSONResponse(content={
+        "status": "ok",
+        "target_info": {
+            "label": label,
+            "head_hex": head_hex,
+            "torso_hex": torso_hex,
+            "legs_hex": legs_hex,
+            "has_head_item": has_head_item,
+            "child_prior": child_prior
+        },
+        "data": parsed_data,
+        "inference_ms": round((time.time() - t0) * 1000)
+    })
+
+
+@app.post("/search_by_structured_target")
+async def search_by_structured_target(request: Request):
+    """
+    Direct zero-latency preset bypass receiving structured schema without external API call.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    label = body.get("label", "Custom Target")
+    head_hex = body.get("head_hex", "#dc2626")
+    torso_hex = body.get("torso_hex", "#eab308")
+    legs_hex = body.get("legs_hex", "#2563eb")
+    has_head_item = bool(body.get("has_head_item", True))
+    child_prior = bool(body.get("child_prior", True))
+
+    if engine:
+        engine.set_parametric_target(
+            label=label,
+            head_hex=head_hex,
+            torso_hex=torso_hex,
+            legs_hex=legs_hex,
+            has_head_item=has_head_item,
+            child_prior=child_prior
+        )
+        return JSONResponse(content={
+            "status": "ok",
+            "label": label,
+            "head_hex": head_hex,
+            "torso_hex": torso_hex,
+            "legs_hex": legs_hex,
+            "has_head_item": has_head_item,
+            "child_prior": child_prior
+        })
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Engine not running"})
+
+
 @app.post("/set_target_preset")
 async def set_target_preset(request: Request):
     """Set preconfigured reference target preset for Tifawt-Guard."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
     preset_id = body.get("preset_id", "preset_1")
     if engine:
         ok, label = engine.set_target_preset(preset_id)
@@ -845,12 +1004,60 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             <!-- MODE 2 SIDEBAR: TIFAWT-GUARD OPERATOR SEARCH CONTROL PANEL           -->
             <!-- ===================================================================== -->
             <div id="mode2Sidebar" class="space-y-5 hidden">
+                <!-- AI Natural Language Search Card (Groq LLM Powered) -->
+                <div class="glass rounded-xl p-4 border border-amber-500/30 shadow-lg shadow-amber-500/10">
+                    <div class="flex items-center justify-between mb-2.5">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm">⚡</span>
+                            <h2 class="text-xs font-bold text-amber-400 uppercase tracking-widest">AI Natural Language Search</h2>
+                        </div>
+                        <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
+                            GROQ LLM
+                        </span>
+                    </div>
+
+                    <p class="text-[11px] text-white/50 mb-2 leading-relaxed">
+                        Input any physical description. Groq extracts 3-part anatomical features (Cap, Torso, Legs) &amp; compiles biometric priors:
+                    </p>
+
+                    <div class="relative mb-2.5">
+                        <textarea id="nlpSearchInput" rows="2"
+                                  class="w-full px-3 py-2 text-xs bg-surface-950/90 text-white border border-white/15 rounded-lg focus:border-amber-400 focus:outline-none custom-scroll placeholder-white/30"
+                                  placeholder="e.g., Young child wearing a red hat, yellow shirt, and jeans">A young child wearing a red hat, yellow shirt, and jeans</textarea>
+                    </div>
+
+                    <!-- Instant Zero-Latency Preset Pills -->
+                    <div class="mb-3">
+                        <div class="text-[10px] text-white/40 mb-1.5 font-medium">Quick Presets (Instant 0ms Bypass):</div>
+                        <div class="flex flex-wrap gap-1.5">
+                            <button type="button" onclick="loadNlpPreset('preset_1')" class="text-[10px] px-2 py-1 rounded bg-red-500/15 text-red-300 border border-red-500/30 hover:bg-red-500/25 transition cursor-pointer flex items-center gap-1">
+                                <span>🔴</span> Kid: Red Cap + Yellow Shirt + Jeans
+                            </button>
+                            <button type="button" onclick="loadNlpPreset('preset_2')" class="text-[10px] px-2 py-1 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 hover:bg-blue-500/25 transition cursor-pointer flex items-center gap-1">
+                                <span>🔵</span> Boy: Blue Hoodie + Dark Pants
+                            </button>
+                            <button type="button" onclick="loadNlpPreset('preset_4')" class="text-[10px] px-2 py-1 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition cursor-pointer flex items-center gap-1">
+                                <span>🟡</span> Student: Sports Jersey
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search Button -->
+                    <button id="btnGroqSearch" onclick="searchByGroqDescription()"
+                            class="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-surface-950 font-bold text-xs shadow-md shadow-amber-500/20 transition cursor-pointer flex items-center justify-center gap-2">
+                        <span id="groqSpinner" class="hidden animate-spin">⏳</span>
+                        <span id="groqBtnIcon">🔍</span>
+                        <span id="groqBtnText">Extract &amp; Search with Groq AI</span>
+                    </button>
+                    <div id="groqStatusMsg" class="hidden text-[10px] font-mono mt-1.5 text-center text-amber-300"></div>
+                </div>
+
                 <!-- Target Reference Card -->
-                <div class="glass rounded-xl p-4 border border-amber-500/20 shadow-lg shadow-amber-500/5">
+                <div class="glass rounded-xl p-4 border border-white/10 shadow-lg">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-2">
                             <span class="text-sm">🎯</span>
-                            <h2 class="text-xs font-bold text-amber-400 uppercase tracking-widest">Target Reference Photo</h2>
+                            <h2 class="text-xs font-bold text-white/70 uppercase tracking-widest">Active Reference Target</h2>
                         </div>
                         <button onclick="clearSearchTarget()" title="Clear active target" class="text-[10px] text-white/40 hover:text-red-400 font-mono transition cursor-pointer">
                             ✕ Reset
@@ -858,13 +1065,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     </div>
 
                     <!-- Photo Upload Dropzone -->
-                    <label class="border-2 border-dashed border-white/15 hover:border-amber-400/50 rounded-xl p-3 flex flex-col items-center justify-center gap-2 cursor-pointer transition bg-white/[0.02] hover:bg-amber-500/[0.04] text-center mb-3.5">
-                        <div class="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400 text-sm">
-                            📷
-                        </div>
-                        <div>
-                            <div class="text-xs font-bold text-white/90">Upload Target Reference Photo</div>
-                            <div class="text-[10px] text-white/35 mt-0.5">YOLO Auto-crops person &amp; extracts torso/legs features</div>
+                    <label class="border border-dashed border-white/15 hover:border-amber-400/50 rounded-xl p-2.5 flex items-center justify-center gap-2.5 cursor-pointer transition bg-white/[0.02] hover:bg-amber-500/[0.04] text-center mb-3">
+                        <span class="text-base text-amber-400">📷</span>
+                        <div class="text-left">
+                            <div class="text-xs font-bold text-white/90">Upload Reference Photo</div>
+                            <div class="text-[9px] text-white/35">YOLO Auto-crops person &amp; extracts 3-part features</div>
                         </div>
                         <input type="file" id="targetPhotoInput" accept="image/*" class="hidden" onchange="uploadTargetPhotoFile(this)">
                     </label>
@@ -876,27 +1081,34 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                             <div id="targetThumbPlaceholder" class="text-xs text-white/20 font-mono text-center">No Photo</div>
                         </div>
 
-                        <div class="flex-1 min-w-0 space-y-1.5">
+                        <div class="flex-1 min-w-0 space-y-1">
                             <div id="targetRefLabel" class="text-xs font-bold text-white truncate">
-                                Standby — Select Preset or Upload
+                                Standby — Search or Select
                             </div>
 
-                            <!-- Dominant Color Swatches -->
-                            <div class="flex items-center gap-2 text-[10px] font-mono">
-                                <span class="text-white/40">Torso:</span>
-                                <span id="targetTorsoSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-slate-600"></span>
-                                <span id="targetTorsoHex" class="text-white/60">#—</span>
-                            </div>
-                            <div class="flex items-center gap-2 text-[10px] font-mono">
-                                <span class="text-white/40">Legs:</span>
-                                <span id="targetLegsSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-slate-600"></span>
-                                <span id="targetLegsHex" class="text-white/60">#—</span>
+                            <!-- 3-Part Dominant Color Swatches -->
+                            <div class="grid grid-cols-1 gap-1 text-[10px] font-mono">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-white/40 w-10">Head:</span>
+                                    <span id="targetHeadSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-red-600"></span>
+                                    <span id="targetHeadHex" class="text-white/70">#dc2626</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-white/40 w-10">Torso:</span>
+                                    <span id="targetTorsoSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-yellow-500"></span>
+                                    <span id="targetTorsoHex" class="text-white/70">#eab308</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-white/40 w-10">Legs:</span>
+                                    <span id="targetLegsSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-blue-600"></span>
+                                    <span id="targetLegsHex" class="text-white/70">#2563eb</span>
+                                </div>
                             </div>
 
                             <!-- Child Prior Badge / Button -->
                             <div class="pt-1">
                                 <button id="btnChildPrior" onclick="toggleChildPrior()" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 transition flex items-center gap-1 cursor-pointer">
-                                    <span>👶</span> Child Scale Prior: ACTIVE
+                                    <span>👶</span> Child Prior: ACTIVE
                                 </button>
                             </div>
                         </div>
@@ -905,37 +1117,47 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
                 <!-- Fast Demo Target Presets -->
                 <div class="glass rounded-xl p-4 border border-white/10">
-                    <h2 class="text-xs font-bold text-white/50 uppercase tracking-widest mb-3">Fast Demo Target Presets</h2>
+                    <h2 class="text-xs font-bold text-white/50 uppercase tracking-widest mb-3">Target Preset Library</h2>
                     <div class="space-y-2">
-                        <button onclick="setTargetPreset('preset_1')" class="preset-btn w-full text-left px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
-                            <div class="flex items-center gap-2.5">
+                        <button onclick="setTargetPreset('preset_1')" class="preset-btn w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-red-500 shrink-0"></span>
+                                <div>
+                                    <div class="text-xs font-bold text-white">Missing Kid (Red Cap, Yellow Shirt, Jeans)</div>
+                                    <div class="text-[10px] text-white/35">Target in kid missing.mp4</div>
+                                </div>
+                            </div>
+                            <span class="text-[10px] font-mono text-amber-400 font-bold">LOAD</span>
+                        </button>
+                        <button onclick="setTargetPreset('preset_2')" class="preset-btn w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center gap-2">
                                 <span class="w-3 h-3 rounded-full bg-blue-500 shrink-0"></span>
                                 <div>
                                     <div class="text-xs font-bold text-white">Missing Boy (Blue Hoodie &amp; Dark Pants)</div>
-                                    <div class="text-[10px] text-white/35">Matches School Sports &amp; CCTV dataset</div>
+                                    <div class="text-[10px] text-white/35">Urban search profile</div>
                                 </div>
                             </div>
-                            <span class="text-[10px] font-mono text-najda font-bold">SELECT</span>
+                            <span class="text-[10px] font-mono text-amber-400 font-bold">LOAD</span>
                         </button>
-                        <button onclick="setTargetPreset('preset_2')" class="preset-btn w-full text-left px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
-                            <div class="flex items-center gap-2.5">
-                                <span class="w-3 h-3 rounded-full bg-red-500 shrink-0"></span>
+                        <button onclick="setTargetPreset('preset_3')" class="preset-btn w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full bg-red-600 shrink-0"></span>
                                 <div>
                                     <div class="text-xs font-bold text-white">Missing Child (Red Jacket &amp; Jeans)</div>
-                                    <div class="text-[10px] text-white/35">Bright contrast outerwear</div>
+                                    <div class="text-[10px] text-white/35">High-contrast outerwear</div>
                                 </div>
                             </div>
-                            <span class="text-[10px] font-mono text-najda font-bold">SELECT</span>
+                            <span class="text-[10px] font-mono text-amber-400 font-bold">LOAD</span>
                         </button>
-                        <button onclick="setTargetPreset('preset_3')" class="preset-btn w-full text-left px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
-                            <div class="flex items-center gap-2.5">
+                        <button onclick="setTargetPreset('preset_4')" class="preset-btn w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
+                            <div class="flex items-center gap-2">
                                 <span class="w-3 h-3 rounded-full bg-yellow-500 shrink-0"></span>
                                 <div>
                                     <div class="text-xs font-bold text-white">Student (Yellow/Green Sports Jersey)</div>
-                                    <div class="text-[10px] text-white/35">Distinct athletic uniform</div>
+                                    <div class="text-[10px] text-white/35">School sport dataset</div>
                                 </div>
                             </div>
-                            <span class="text-[10px] font-mono text-najda font-bold">SELECT</span>
+                            <span class="text-[10px] font-mono text-amber-400 font-bold">LOAD</span>
                         </button>
                     </div>
                 </div>
@@ -1071,6 +1293,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     const lbl = document.getElementById('targetRefLabel');
                     if (lbl && ti.label) lbl.textContent = ti.label;
 
+                    const hSwatch = document.getElementById('targetHeadSwatch');
+                    const hHex = document.getElementById('targetHeadHex');
+                    if (hSwatch && ti.head_hex) {
+                        hSwatch.style.backgroundColor = ti.head_hex;
+                        if (hHex) hHex.textContent = ti.head_hex;
+                    }
+
                     const tSwatch = document.getElementById('targetTorsoSwatch');
                     const tHex = document.getElementById('targetTorsoHex');
                     if (tSwatch && ti.torso_hex) {
@@ -1149,7 +1378,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                                 <div class="text-[11px] font-bold text-white truncate">${m.message}</div>
                                 <div class="flex items-center justify-between text-[10px] text-white/40 font-mono">
                                     <span>📍 ${m.camera_id} (${m.zone_name})</span>
-                                    <span>T: ${m.torso_sim}% | L: ${m.legs_sim}%</span>
+                                    <span>H:${m.head_sim || 0}% | T:${m.torso_sim}% | L:${m.legs_sim}%</span>
                                 </div>
 
                                 <div class="flex items-center gap-2 pt-1 border-t border-white/10">
@@ -1436,6 +1665,86 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     }
 
     // ── Tifawt-Guard Handlers ────────────────────────────
+    async function searchByGroqDescription() {
+        const input = document.getElementById('nlpSearchInput');
+        const spinner = document.getElementById('groqSpinner');
+        const statusEl = document.getElementById('nlpStatusMsg');
+        const btn = document.getElementById('btnGroqSearch');
+        if (!input) return;
+
+        const description = input.value.trim();
+        if (!description) {
+            if (statusEl) {
+                statusEl.textContent = 'Please enter a target description.';
+                statusEl.className = 'text-[11px] text-amber-400 font-mono';
+                statusEl.classList.remove('hidden');
+            }
+            return;
+        }
+
+        if (spinner) spinner.classList.remove('hidden');
+        if (btn) btn.disabled = true;
+        if (statusEl) {
+            statusEl.textContent = 'Querying Groq LLM (LLaMA-3) & extracting visual schema…';
+            statusEl.className = 'text-[11px] text-amber-300 font-mono animate-pulse';
+            statusEl.classList.remove('hidden');
+        }
+
+        try {
+            const res = await fetch('/search_by_description', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description })
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                if (statusEl) {
+                    statusEl.textContent = `Target locked: ${data.target_info.label} (${data.inference_ms}ms)`;
+                    statusEl.className = 'text-[11px] text-emerald-400 font-mono font-bold';
+                }
+                fetchTelemetry();
+            } else {
+                if (statusEl) {
+                    statusEl.textContent = `Extraction failed: ${data.detail || data.message || 'Unknown error'}`;
+                    statusEl.className = 'text-[11px] text-red-400 font-mono';
+                }
+            }
+        } catch (e) {
+            if (statusEl) {
+                statusEl.textContent = `Network error: ${e.message}`;
+                statusEl.className = 'text-[11px] text-red-400 font-mono';
+            }
+        } finally {
+            if (spinner) spinner.classList.add('hidden');
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function loadNlpPreset(presetId) {
+        const input = document.getElementById('nlpSearchInput');
+        const statusEl = document.getElementById('nlpStatusMsg');
+
+        const presetDescriptions = {
+            'preset_1': "A young child wearing a red hat, yellow shirt, and blue jeans",
+            'preset_2': "Missing boy wearing a royal blue hoodie and dark pants",
+            'preset_3': "Missing child in bright red hooded jacket and beige trousers",
+            'preset_4': "Student in athletic sports jersey and dark track shorts"
+        };
+
+        if (input && presetDescriptions[presetId]) {
+            input.value = presetDescriptions[presetId];
+        }
+
+        if (statusEl) {
+            statusEl.textContent = 'Instant preset loaded (0ms Groq bypass active)';
+            statusEl.className = 'text-[11px] text-emerald-400 font-mono';
+            statusEl.classList.remove('hidden');
+            setTimeout(() => statusEl.classList.add('hidden'), 3500);
+        }
+
+        await setTargetPreset(presetId);
+    }
+
     async function setTargetPreset(presetId) {
         try {
             const res = await fetch('/set_target_preset', {
