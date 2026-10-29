@@ -22,7 +22,7 @@ import requests as req
 import cv2
 import uvicorn
 from fastapi import FastAPI, Request, UploadFile, File
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
 
 from vision_engine import SahraEyeEngine
 
@@ -129,6 +129,33 @@ async def video_feed():
         generate_mjpeg(),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+@app.get("/cctv1_feed")
+async def cctv1_feed():
+    """Serve cctv1.mp4 video file with support for range streaming."""
+    cctv1_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cctv1.mp4")
+    if not os.path.exists(cctv1_path):
+        return JSONResponse(status_code=404, content={"error": "cctv1.mp4 not found"})
+    return FileResponse(cctv1_path, media_type="video/mp4")
+
+
+@app.get("/cctv2_feed")
+async def cctv2_feed():
+    """Serve cctv2.mp4 video file with support for range streaming."""
+    cctv2_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cctv2.mp4")
+    if not os.path.exists(cctv2_path):
+        return JSONResponse(status_code=404, content={"error": "cctv2.mp4 not found"})
+    return FileResponse(cctv2_path, media_type="video/mp4")
+
+
+@app.get("/cctv3_feed")
+async def cctv3_feed():
+    """Serve cctv3.jpg photo file."""
+    cctv3_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cctv3.jpg")
+    if not os.path.exists(cctv3_path):
+        return JSONResponse(status_code=404, content={"error": "cctv3.jpg not found"})
+    return FileResponse(cctv3_path, media_type="image/jpeg")
 
 
 @app.get("/telemetry")
@@ -784,53 +811,53 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
                 <!-- 2x2 Multi-Camera Surveillance Grid -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <!-- CAM 01 (Simulated Zone A: Place du Méchouar) -->
+                    <!-- CAM 01 (Local Feed: cctv1.mp4 looping) -->
                     <div class="glass rounded-xl overflow-hidden border border-white/10 flex flex-col">
                         <div class="px-3 py-2 bg-surface-950/80 border-b border-white/10 flex items-center justify-between text-xs">
                             <div class="flex items-center gap-2">
                                 <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
                                 <span class="font-bold font-mono text-white/90">CAM 01: Place du Méchouar</span>
                             </div>
-                            <span class="text-[10px] font-mono text-white/40">ZONE NORD • 25 FPS</span>
+                            <span class="text-[10px] font-mono text-emerald-400/80">LOCAL FEED • CCTV 1 (LOOP)</span>
                         </div>
                         <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
-                            <canvas id="canvasCam1" width="480" height="270" class="w-full h-full object-cover"></canvas>
-                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/80 bg-black/70 px-1.5 py-0.5 rounded">
-                                REC [CCTV-01] • MECHOUAR-ESPLANADE
+                            <video id="cam1Video" src="/cctv1_feed" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
+                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/90 bg-black/80 px-2 py-0.5 rounded border border-emerald-500/20">
+                                ● REC [CCTV-01] • cctv1.mp4
                             </div>
                         </div>
                     </div>
 
-                    <!-- CAM 02 (Simulated Zone B: Boulevard Mohammed V) -->
+                    <!-- CAM 02 (Local Feed: cctv2.mp4 looping) -->
                     <div class="glass rounded-xl overflow-hidden border border-white/10 flex flex-col">
                         <div class="px-3 py-2 bg-surface-950/80 border-b border-white/10 flex items-center justify-between text-xs">
                             <div class="flex items-center gap-2">
                                 <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
                                 <span class="font-bold font-mono text-white/90">CAM 02: Blvd Mohammed V</span>
                             </div>
-                            <span class="text-[10px] font-mono text-white/40">ZONE CENTRE • 25 FPS</span>
+                            <span class="text-[10px] font-mono text-emerald-400/80">LOCAL FEED • CCTV 2 (LOOP)</span>
                         </div>
                         <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
-                            <canvas id="canvasCam2" width="480" height="270" class="w-full h-full object-cover"></canvas>
-                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/80 bg-black/70 px-1.5 py-0.5 rounded">
-                                REC [CCTV-02] • BLVD-MOHAMMED-V
+                            <video id="cam2Video" src="/cctv2_feed" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
+                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/90 bg-black/80 px-2 py-0.5 rounded border border-emerald-500/20">
+                                ● REC [CCTV-02] • cctv2.mp4
                             </div>
                         </div>
                     </div>
 
-                    <!-- CAM 03 (Simulated Zone C: Al-Massira Market) -->
+                    <!-- CAM 03 (Local Feed: cctv3.jpg photo feed on repeat) -->
                     <div class="glass rounded-xl overflow-hidden border border-white/10 flex flex-col">
                         <div class="px-3 py-2 bg-surface-950/80 border-b border-white/10 flex items-center justify-between text-xs">
                             <div class="flex items-center gap-2">
                                 <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
                                 <span class="font-bold font-mono text-white/90">CAM 03: Al-Massira Souk</span>
                             </div>
-                            <span class="text-[10px] font-mono text-white/40">COMMERCIAL • 25 FPS</span>
+                            <span class="text-[10px] font-mono text-cyan-400/80">LOCAL FEED • CCTV 3 (PHOTO)</span>
                         </div>
                         <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
-                            <canvas id="canvasCam3" width="480" height="270" class="w-full h-full object-cover"></canvas>
-                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/80 bg-black/70 px-1.5 py-0.5 rounded">
-                                REC [CCTV-03] • AL-MASSIRA-SOUK
+                            <img id="cam3Img" src="/cctv3_feed" class="w-full h-full object-cover" alt="CAM 03 Local CCTV Feed">
+                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/90 bg-black/80 px-2 py-0.5 rounded border border-emerald-500/20">
+                                ● LIVE [CCTV-03] • cctv3.jpg
                             </div>
                         </div>
                     </div>
@@ -1023,7 +1050,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     <div class="relative mb-2.5">
                         <textarea id="nlpSearchInput" rows="2"
                                   class="w-full px-3 py-2 text-xs bg-surface-950/90 text-white border border-white/15 rounded-lg focus:border-amber-400 focus:outline-none custom-scroll placeholder-white/30"
-                                  placeholder="e.g., Young child wearing a red hat, yellow shirt, and jeans">A young child wearing a red hat, yellow shirt, and jeans</textarea>
+                                  placeholder="e.g., Young child wearing a red hat, yellow shirt, and jeans"></textarea>
                     </div>
 
                     <!-- Instant Zero-Latency Preset Pills -->
@@ -1090,25 +1117,25 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                             <div class="grid grid-cols-1 gap-1 text-[10px] font-mono">
                                 <div class="flex items-center gap-1.5">
                                     <span class="text-white/40 w-10">Head:</span>
-                                    <span id="targetHeadSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-red-600"></span>
-                                    <span id="targetHeadHex" class="text-white/70">#dc2626</span>
+                                    <span id="targetHeadSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-slate-700"></span>
+                                    <span id="targetHeadHex" class="text-white/70">—</span>
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <span class="text-white/40 w-10">Torso:</span>
-                                    <span id="targetTorsoSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-yellow-500"></span>
-                                    <span id="targetTorsoHex" class="text-white/70">#eab308</span>
+                                    <span id="targetTorsoSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-slate-700"></span>
+                                    <span id="targetTorsoHex" class="text-white/70">—</span>
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <span class="text-white/40 w-10">Legs:</span>
-                                    <span id="targetLegsSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-blue-600"></span>
-                                    <span id="targetLegsHex" class="text-white/70">#2563eb</span>
+                                    <span id="targetLegsSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-slate-700"></span>
+                                    <span id="targetLegsHex" class="text-white/70">—</span>
                                 </div>
                             </div>
 
                             <!-- Child Prior Badge / Button -->
                             <div class="pt-1">
-                                <button id="btnChildPrior" onclick="toggleChildPrior()" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 transition flex items-center gap-1 cursor-pointer">
-                                    <span>👶</span> Child Prior: ACTIVE
+                                <button id="btnChildPrior" onclick="toggleChildPrior()" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-white/5 text-white/40 border border-white/10 transition flex items-center gap-1 cursor-pointer">
+                                    <span>👶</span> Child Prior: OFF
                                 </button>
                             </div>
                         </div>
@@ -1648,20 +1675,18 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     }
 
     function startCamGridSimulation() {
-        if (camSimInterval) return;
-        camSimInterval = setInterval(() => {
-            camSimFrame++;
-            drawCctvCanvas('canvasCam1', 'MECHOUAR-NORD', SIM_PEDS_CAM1);
-            drawCctvCanvas('canvasCam2', 'BLVD-MOHAMMED-V', SIM_PEDS_CAM2);
-            drawCctvCanvas('canvasCam3', 'AL-MASSIRA-SOUK', SIM_PEDS_CAM3);
-        }, 65); // ~15 FPS client-side rendering (0% Python CPU)
+        // Ensure local videos (cctv1 and cctv2) play smoothly on loop
+        const v1 = document.getElementById('cam1Video');
+        const v2 = document.getElementById('cam2Video');
+        if (v1 && v1.paused) v1.play().catch(() => {});
+        if (v2 && v2.paused) v2.play().catch(() => {});
     }
 
     function stopCamGridSimulation() {
-        if (camSimInterval) {
-            clearInterval(camSimInterval);
-            camSimInterval = null;
-        }
+        const v1 = document.getElementById('cam1Video');
+        const v2 = document.getElementById('cam2Video');
+        if (v1 && !v1.paused) v1.pause();
+        if (v2 && !v2.paused) v2.pause();
     }
 
     // ── Tifawt-Guard Handlers ────────────────────────────

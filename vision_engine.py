@@ -647,9 +647,8 @@ class SahraEyeEngine:
         # Set of alert keys already logged (prevents duplicate alerts per track)
         self._logged_alert_keys = set()
 
-        # Mode 2 (Tifawt-Guard) Re-ID Matcher
+        # Mode 2 (Tifawt-Guard) Re-ID Matcher (Standby initially with no predefined target)
         self.reid_matcher = TifawtReIDMatcher(threshold=0.65)
-        self._init_default_preset()
 
         # CNDP blur toggle (disabled for performance/testing per request)
         self.enable_cndp_blur = False
@@ -1599,6 +1598,14 @@ class SahraEyeEngine:
                     # Seamless loop for uploaded CCTV / test video files
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     ret, frame = self.cap.read()
+                    # User requirement: When video ends, remove detections/markers and start over
+                    if self.current_mode == 1:
+                        self.tracker.clear_victims()
+                        self.tracker = PersonTracker()  # Fresh tracker with 0 residual bounding boxes
+                        self.alerts.clear()
+                        self._logged_alert_keys.clear()
+                        self.green_wave_active = False
+                        logger.info("Video looped → Mode 1 detections and fall markers cleared for fresh run.")
                 if not ret or frame is None:
                     frame = self._generate_demo_frame()
         else:
