@@ -109,10 +109,12 @@ def generate_mjpeg():
 async def startup_event():
     global engine
     logger.info("Starting Sahra-Eye engine…")
-    engine = SahraEyeEngine(source=0)
+    default_m1_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Elder heart atack.mp4")
+    src = default_m1_path if os.path.exists(default_m1_path) else 0
+    engine = SahraEyeEngine(source=src)
     thread = threading.Thread(target=processing_loop, daemon=True)
     thread.start()
-    logger.info("Engine running — dashboard at http://localhost:8000")
+    logger.info(f"Engine running — dashboard at http://localhost:8000 (Source: {engine.source_name})")
 
 
 @app.on_event("shutdown")
@@ -168,12 +170,22 @@ async def telemetry():
 
 @app.post("/mode")
 async def set_mode(request: Request):
-    """Switch operational mode."""
+    """Switch operational mode and automatically load mode-specific default video."""
     body = await request.json()
     mode = int(body.get("mode", 1))
     if engine:
         engine.set_mode(mode)
-    return JSONResponse(content={"status": "ok", "mode": mode})
+        # Switch to mode-specific default video
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        if mode == 1:
+            m1_path = os.path.join(base_dir, "Elder heart atack.mp4")
+            if os.path.exists(m1_path):
+                engine.switch_source(m1_path, source_name="Elder heart atack.mp4")
+        elif mode == 2:
+            m2_path = os.path.join(base_dir, "kid missing.mp4")
+            if os.path.exists(m2_path):
+                engine.switch_source(m2_path, source_name="kid missing.mp4")
+    return JSONResponse(content={"status": "ok", "mode": mode, "source": getattr(engine, "source_name", "Unknown")})
 
 
 @app.post("/upload_video")
@@ -446,23 +458,26 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sahra-Eye | Laâyoune Smart City Vision</title>
-    <meta name="description" content="Edge AI Vision Engine for Laâyoune Smart City — Real-time fall detection with CNDP Law 09-08 privacy compliance">
+    <meta name="description" content="Edge AI Vision Engine for Laâyoune Smart City — Real-time fall detection and missing person search with CNDP Law 09-08 compliance">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        inter: ['Inter', 'sans-serif'],
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
                         mono: ['JetBrains Mono', 'monospace']
                     },
                     colors: {
-                        najda:   { DEFAULT: '#00ff88', dark: '#00cc6a', light: '#66ffb3' },
-                        tifawt:  { DEFAULT: '#00d4ff' },
-                        guard:   { DEFAULT: '#ff4444' },
-                        surface: { 950: '#060a14', 900: '#0a0e1a', 800: '#111827', 700: '#1e293b', 600: '#334155' }
+                        brand: {
+                            50:  '#F0FDF4',
+                            100: '#DCFCE7',
+                            500: '#10B981',
+                            600: '#059669',
+                            700: '#047857'
+                        }
                     }
                 }
             }
@@ -471,670 +486,602 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <style>
         body { font-family: 'Inter', sans-serif; }
 
-        /* ── Animated background ───────────────────────── */
-        .bg-animated {
-            background: linear-gradient(135deg, #060a14 0%, #0f172a 40%, #0a0e1a 70%, #060a14 100%);
-            background-size: 400% 400%;
-            animation: bgShift 20s ease infinite;
-        }
-        @keyframes bgShift {
-            0%,100% { background-position: 0% 50%; }
-            50%     { background-position: 100% 50%; }
-        }
-
-        /* ── Glassmorphism ─────────────────────────────── */
-        .glass {
-            background: rgba(17, 24, 39, 0.6);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border: 1px solid rgba(255,255,255,0.06);
-        }
-
-        /* ── Glows ─────────────────────────────────────── */
-        .glow-najda  { box-shadow: 0 0 20px rgba(0,255,136,0.25), inset 0 0 20px rgba(0,255,136,0.04); }
-        .glow-red    { box-shadow: 0 0 20px rgba(255,68,68,0.3); }
-
-        /* ── Animations ────────────────────────────────── */
+        /* ── Animations & Effects ──────────────────────── */
         .pulse-live { animation: pulseLive 2s ease-in-out infinite; }
-        @keyframes pulseLive { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
+        @keyframes pulseLive { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.92); } }
 
         .video-border {
-            background: linear-gradient(90deg, #00ff88, #00cc6a, #00ff88);
-            background-size: 200% 100%;
-            animation: borderFlow 3s linear infinite;
-            padding: 2px;
-            border-radius: 14px;
+            border: 2px solid #E2E8F0;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
         }
-        @keyframes borderFlow { 0% { background-position:0 50%; } 100% { background-position:200% 50%; } }
-
         .video-border.alert-flash {
-            background: linear-gradient(90deg, #ff4444, #ff8800, #ff4444);
-            animation: borderFlow 0.4s linear infinite;
+            border-color: #EF4444 !important;
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.45) !important;
+            animation: flashPulse 0.5s ease infinite alternate;
         }
+        @keyframes flashPulse { from { border-color: #EF4444; } to { border-color: #F87171; } }
 
-        .alert-entry { animation: slideIn 0.35s ease-out; }
-        @keyframes slideIn { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+        .alert-entry { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* ── Map Green-Wave ────────────────────────────── */
-        .green-wave-road { animation: waveFlow 1s linear infinite; }
-        @keyframes waveFlow { 0% { stroke-dashoffset:0; } 100% { stroke-dashoffset:-30; } }
+        /* ── Clean Scrollbars ──────────────────────────── */
+        .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #F1F5F9; border-radius: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 
-        /* ── Scrollbar ─────────────────────────────────── */
-        .custom-scroll::-webkit-scrollbar       { width:4px; }
-        .custom-scroll::-webkit-scrollbar-track  { background:transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb  { background:rgba(0,255,136,0.25); border-radius:2px; }
-
-        /* ── Buttons ───────────────────────────────────── */
-        .mode-btn { transition: all 0.25s ease; }
-        .mode-btn:hover:not(:disabled) { transform: translateY(-1px); }
-        .mode-btn:disabled { opacity:0.3; cursor:not-allowed; }
-
-        .stat-card { transition: all 0.25s ease; }
-        .stat-card:hover { transform: translateY(-2px); border-color: rgba(0,255,136,0.2); }
+        /* ── Modern Card Interactions ─────────────────── */
+        .card-interactive { transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+        .card-interactive:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -2px rgba(0,0,0,0.06); }
     </style>
 </head>
 
-<body class="bg-animated min-h-screen text-white antialiased">
+<body class="bg-slate-50 min-h-screen text-slate-800 antialiased selection:bg-emerald-100 selection:text-emerald-900">
 
 <!-- ═══════════════════════════════════════════════════════════
-     HEADER
+     CLEAN MINIMALIST HEADER
      ═══════════════════════════════════════════════════════════ -->
-<header class="glass sticky top-0 z-50 border-b border-white/5">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+<header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
         <!-- Logo -->
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-najda to-emerald-600 flex items-center justify-center text-lg select-none">🏜️</div>
+            <div class="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center text-base font-bold shadow-xs select-none">
+                🏜️
+            </div>
             <div>
-                <h1 class="text-xl font-extrabold tracking-tight leading-none">
-                    <span class="text-najda">Sahra</span><span class="text-white/90">-Eye</span>
+                <h1 class="text-base font-extrabold tracking-tight text-slate-900 leading-none flex items-center gap-1.5">
+                    <span>Sahra-Eye</span>
+                    <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold border border-slate-200">v2.0</span>
                 </h1>
-                <p class="text-[10px] text-white/30 font-mono tracking-widest">LAÂYOUNE SMART CITY VISION</p>
+                <p class="text-[10px] text-slate-400 font-mono tracking-wider mt-0.5">LAÂYOUNE SMART CITY VISION</p>
             </div>
         </div>
 
-        <!-- Operational Mode Switcher Pill -->
-        <div class="flex items-center p-1 rounded-xl bg-white/5 border border-white/10 text-xs">
-            <button id="navMode1Btn" onclick="setMode(1)" class="px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-najda text-surface-950 shadow-sm cursor-pointer">
-                <span>🚑</span> Mode 1: Najda-Vision
+        <!-- Mode Switcher Pill Toggle -->
+        <div class="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/80 text-xs shadow-xs">
+            <button id="navMode1Btn" onclick="setMode(1)" class="px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-white text-slate-900 shadow-xs cursor-pointer border border-slate-200/60">
+                <span>❤️</span> Mode 1: Najda-Vision
             </button>
-            <button id="navMode2Btn" onclick="setMode(2)" class="px-3.5 py-1.5 rounded-lg font-bold text-white/50 hover:text-white transition flex items-center gap-1.5 cursor-pointer">
+            <button id="navMode2Btn" onclick="setMode(2)" class="px-3.5 py-1.5 rounded-lg font-bold text-slate-500 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer">
                 <span>🔍</span> Mode 2: Tifawt-Guard
             </button>
         </div>
 
-        <!-- Right badges -->
-        <div class="flex items-center gap-3">
-            <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
-                <span class="text-[11px] font-mono text-emerald-400">CNDP-0908</span>
+        <!-- Right System Badges -->
+        <div class="flex items-center gap-2.5">
+            <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-[11px] font-mono">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-live"></span>
+                <span class="font-bold">CNDP 09-08</span>
+                <span class="text-[10px] text-emerald-600">Privacy Active</span>
             </div>
-            <div id="modeHeaderBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-najda/10 border border-najda/20">
-                <span id="modeHeaderNumber" class="text-[11px] font-bold text-najda">MODE 1</span>
-                <span id="modeHeaderTitle" class="text-[11px] text-white/40">Najda-Vision</span>
+            <div id="modeHeaderBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-[11px] font-mono">
+                <span id="modeHeaderNumber" class="font-bold text-rose-600">MODE 1</span>
+                <span id="modeHeaderTitle" class="text-slate-500">Najda-Vision</span>
             </div>
-            <div id="clock" class="text-sm font-mono text-white/30 hidden sm:block"></div>
+            <div id="clock" class="text-xs font-mono font-semibold text-slate-500 hidden md:block"></div>
         </div>
     </div>
 </header>
 
 <!-- ═══════════════════════════════════════════════════════════
-     MAIN GRID
+     MAIN WORKSPACE
      ═══════════════════════════════════════════════════════════ -->
-<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-5 space-y-4">
+
+    <!-- ── PROMINENT USE CASE HIGHLIGHT BANNERS ─────────────── -->
+    <!-- Mode 1 Use Case -->
+    <div id="useCaseBannerM1" class="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/90 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3.5">
+            <div class="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-xl shrink-0">
+                ❤️
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-600 px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200/60">ACTIVE USE CASE</span>
+                    <h2 class="text-sm sm:text-base font-extrabold text-slate-900">Heart attacks &amp; sudden medical collapses detected early</h2>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">Real-time edge pose AI triage detects collapses in public spaces within 1.5s, alerting Protection Civile 150 &amp; activating green-wave ambulance corridors.</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs font-mono font-semibold text-rose-700 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200/60">
+            <span class="w-2 h-2 rounded-full bg-rose-500 pulse-live"></span>
+            <span>AUTONOMOUS TRIAGE ACTIVE</span>
+        </div>
+    </div>
+
+    <!-- Mode 2 Use Case -->
+    <div id="useCaseBannerM2" class="hidden bg-white rounded-2xl p-4 shadow-xs border border-slate-200/90 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3.5">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-xl shrink-0">
+                🔍
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-700 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200/60">ACTIVE USE CASE</span>
+                    <h2 class="text-sm sm:text-base font-extrabold text-slate-900">Missing children located in real-time across CCTV network</h2>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">Groq AI parses physical appearance into 3-part anatomical color models (Cap, Torso, Legs) with biometric child scale priors to locate targets across city cameras.</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs font-mono font-semibold text-amber-800 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200/60">
+            <span class="w-2 h-2 rounded-full bg-amber-500 pulse-live"></span>
+            <span>RE-ID SEARCH SCANNER ACTIVE</span>
+        </div>
+    </div>
+
+    <!-- ── 2-COLUMN GRID (LEFT: Video & Main Features, RIGHT: Controls & Sidebar) ── -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        <!-- ── LEFT COLUMN: Video + Stats + Map (2/3) ──────── -->
-        <div class="lg:col-span-2 space-y-5">
+        <!-- ═══════════════════════════════════════════════════
+             LEFT COLUMN: Hero Camera + 3 CCTV Feeds + Stats + Map/Ticker (2/3)
+             ═══════════════════════════════════════════════════ -->
+        <div class="lg:col-span-2 space-y-4">
 
-            <!-- ── MODE 1 MAIN VIEW CONTAINER ──────────────── -->
-            <div id="mode1MainView" class="space-y-5">
+            <!-- ── MULTI-CAMERA SURVEILLANCE ARRAY ───────────── -->
+            <div class="bg-white rounded-2xl p-3 shadow-xs border border-slate-200 space-y-3">
 
-            <!-- Video Source & CCTV Upload Toolbar -->
-            <div class="glass rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 border border-white/10">
-                <div class="flex items-center gap-2.5">
-                    <span class="text-xs font-semibold text-white/50 uppercase tracking-wider">Feed Source:</span>
-                    <span id="activeSourceBadge" class="text-xs font-mono font-bold px-2.5 py-1 rounded-md bg-najda/15 text-najda border border-najda/30 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-najda pulse-live"></span>
-                        <span id="activeSourceName">Live Webcam</span>
-                    </span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <select id="videoPresetSelect" onchange="switchPresetVideo(this.value)" class="px-2.5 py-1.5 rounded-lg text-xs bg-white/5 hover:bg-white/10 text-white/80 border border-white/10 outline-none cursor-pointer">
-                        <option value="">-- Select CCTV Preset --</option>
-                    </select>
-                    <button id="btnWebcam" onclick="switchToWebcam()" title="Switch to live local webcam" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/80 border border-white/10 transition flex items-center gap-1.5 cursor-pointer">
-                        <span>📷</span> Live Webcam
-                    </button>
-                    <label class="cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold bg-najda/20 hover:bg-najda/30 text-najda border border-najda/40 transition flex items-center gap-1.5">
-                        <span>📁</span> Upload CCTV Video
-                        <input type="file" id="videoUploadInput" accept="video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm" class="hidden" onchange="uploadCctvVideo(this)">
-                    </label>
-                    <span id="uploadStatus" class="text-xs text-najda animate-pulse font-mono hidden">Uploading…</span>
-                </div>
-            </div>
-
-            <!-- Video Feed -->
-            <div id="videoBorder" class="video-border">
-                <div class="rounded-xl overflow-hidden bg-surface-950">
-                    <div class="relative">
-                        <img id="videoFeed" src="/video_feed"
-                             class="w-full aspect-video object-cover bg-black"
-                             alt="Sahra-Eye Live Feed">
-                        <!-- LIVE badge -->
-                        <div class="absolute top-3 left-3 flex items-center gap-2 px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-sm">
-                            <span class="w-2 h-2 rounded-full bg-red-500 pulse-live"></span>
-                            <span class="text-[11px] font-mono text-white/80 tracking-wider">LIVE</span>
-                        </div>
-                        <!-- Edge AI badge -->
-                        <div class="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-sm">
-                            <span class="text-[10px] font-mono text-najda/70 tracking-wider">EDGE AI • 0ms LATENCY</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Stats Row -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div class="stat-card glass rounded-xl p-4">
-                    <div class="text-[10px] text-white/35 uppercase tracking-widest font-semibold">Framerate</div>
-                    <div class="flex items-baseline gap-1 mt-1.5">
-                        <span id="statFps" class="text-2xl font-extrabold font-mono text-najda">0</span>
-                        <span class="text-xs text-white/25">fps</span>
-                    </div>
-                </div>
-                <div class="stat-card glass rounded-xl p-4">
-                    <div class="text-[10px] text-white/35 uppercase tracking-widest font-semibold">Persons</div>
-                    <div class="flex items-baseline gap-1 mt-1.5">
-                        <span id="statPersons" class="text-2xl font-extrabold font-mono text-white/90">0</span>
-                        <span class="text-xs text-white/25">tracked</span>
-                    </div>
-                </div>
-                <div class="stat-card glass rounded-xl p-4">
-                    <div class="text-[10px] text-white/35 uppercase tracking-widest font-semibold">Alerts</div>
-                    <div class="flex items-baseline gap-1 mt-1.5">
-                        <span id="statAlerts" class="text-2xl font-extrabold font-mono text-red-400">0</span>
-                        <span class="text-xs text-white/25">total</span>
-                    </div>
-                </div>
-                <div class="stat-card glass rounded-xl p-4">
-                    <div class="text-[10px] text-white/35 uppercase tracking-widest font-semibold">Green Wave</div>
-                    <div class="mt-1.5">
-                        <span id="statGreenWave" class="text-lg font-bold font-mono text-white/25">INACTIVE</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ===================================================================== -->
-            <!-- LAÂYOUNE SMART CITY CORRIDOR MAP (src/laayoune-map-feature)           -->
-            <!-- ===================================================================== -->
-            <div class="glass rounded-xl overflow-hidden border border-white/10 flex flex-col">
-                <!-- Map Header Toolbar -->
-                <div class="p-3.5 sm:p-4 border-b border-white/10 flex flex-wrap items-center justify-between gap-3 bg-surface-950/60">
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h2 class="text-xs sm:text-sm font-bold text-white tracking-wide">
-                                🗺️ Laâyoune Corridor Map — Hôpital Moulay Hassan to Place du Méchouar
-                            </h2>
-                            <span id="mapStatusBadge" class="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-surface-800 text-white/50 border border-white/10">
-                                ORGANIC CITY CIRCULATION
-                            </span>
-                        </div>
-                        <p id="mapSubtext" class="text-[11px] text-white/40 mt-0.5">
-                            Realistic Laâyoune streets & roundabouts with random traffic. Drag to pan or use zoom controls.
-                        </p>
-                    </div>
-
+                <!-- Toolbar: Active Source & Quick Switch -->
+                <div class="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100 text-xs">
                     <div class="flex items-center gap-2">
-                        <button type="button" onclick="randomizeCars()" title="Randomize Car Traffic Positions & Speeds"
-                                class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-white/5 hover:bg-white/10 text-white/80 rounded-lg border border-white/10 transition cursor-pointer">
-                            <span>🔀</span> Randomize Cars
-                        </button>
-                        <button id="btnManualGreenWave" type="button" onclick="toggleManualGreenWave()"
-                                class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer bg-emerald-500 text-surface-950 hover:bg-emerald-400">
-                            <span>🚑</span> Test Faint & Dispatch Ambulance
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Live Ambulance Telemetry & Turn-by-Turn Navigation Bar -->
-                <div id="ambulanceStatusBar" class="px-4 py-2 border-b border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs bg-surface-950/80 transition-colors">
-                    <div class="flex items-center gap-2">
-                        <span id="ambulancePulseDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
-                        <span class="text-sm">🚨</span>
-                        <span class="font-bold text-white">Ambulance GPS (AMB-LAA-01):</span>
-                        <span id="ambulanceTurnStatus" class="text-white/50 font-medium">
-                            Standby at Hôpital Moulay Hassan
+                        <span class="text-slate-400 font-semibold uppercase tracking-wider text-[11px]">Primary Feed:</span>
+                        <span id="activeSourceBadge" class="font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 text-[11px]">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-live"></span>
+                            <span id="activeSourceName">Elder heart atack.mp4</span>
                         </span>
                     </div>
 
-                    <div id="ambulanceTelemetryStats" class="flex items-center gap-3 font-mono tabular-nums text-[11px] text-white/40">
-                        <span>Active Traffic: <strong id="trafficCarCount" class="text-white font-mono">24 vehicles</strong> circulating</span>
-                        <span>Destination: <strong class="text-cyan-400">Place du Méchouar (Circle)</strong></span>
-                    </div>
-                </div>
-
-                <!-- Bigger, Zoomable & Pannable Realistic Laâyoune City Map Canvas -->
-                <div id="mapCanvasContainer" class="relative h-[440px] sm:h-[480px] w-full bg-[#111927] overflow-hidden select-none">
-                    <!-- Top-Right Interactive Map Zoom & Focus Controls -->
-                    <div class="absolute top-3 right-3 z-20 flex flex-col gap-1.5 bg-surface-950/90 backdrop-blur-md border border-white/10 p-1.5 rounded-xl shadow-lg">
-                        <button type="button" onclick="zoomInMap()" title="Zoom In"
-                                class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-400 transition flex items-center justify-center font-bold text-base cursor-pointer">
-                            +
-                        </button>
-                        <div id="mapZoomDisplay" class="text-[10px] font-mono tabular-nums text-center text-white/50 py-0.5">
-                            1.2x
-                        </div>
-                        <button type="button" onclick="zoomOutMap()" title="Zoom Out"
-                                class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-cyan-400 transition flex items-center justify-center font-bold text-base cursor-pointer">
-                            -
-                        </button>
-                        <button type="button" onclick="resetMapZoom()" title="Reset Map Zoom"
-                                class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition flex items-center justify-center text-xs cursor-pointer">
-                            ⛶
-                        </button>
-                    </div>
-
-                    <!-- Top-Left Quick Focus Buttons (Zoom to Place du Méchouar / Follow Ambulance) -->
-                    <div class="absolute top-3 left-3 z-20 flex flex-wrap items-center gap-1.5">
-                        <button type="button" onclick="focusPlaceMechouar()"
-                                class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-surface-950/90 hover:bg-surface-900 text-cyan-400 border border-cyan-500/40 backdrop-blur-md shadow cursor-pointer">
-                            <span>🎯</span> Zoom to Place du Méchouar
-                        </button>
-                        <button id="btnFollowAmbulance" type="button" onclick="toggleFollowAmbulance()"
-                                class="hidden items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-surface-950/90 text-emerald-400 border border-emerald-500/40 hover:bg-surface-900 backdrop-blur-md shadow transition-colors cursor-pointer">
-                            <span>🚑</span> Follow Ambulance
-                        </button>
-                    </div>
-
-                    <!-- The SVG Canvas -->
-                    <svg id="laayouneMapSvg" viewBox="0 0 1080 620"
-                         class="w-full h-full object-cover cursor-grab"
-                         aria-label="Laâyoune Organic Multi-Turn Traffic Map with Place du Méchouar Circle">
-                    </svg>
-
-                    <!-- Bottom Status Legend -->
-                    <div class="absolute bottom-2.5 left-3 right-3 bg-surface-950/90 backdrop-blur-md border border-white/10 rounded-lg px-3 py-1.5 text-xs flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-                        <div id="mapLegendContent" class="flex flex-wrap items-center gap-4">
-                            <span class="flex items-center gap-1.5 text-white/70 font-medium">
-                                <span class="text-cyan-400">🧭</span> Organic City Traffic (24 Random Cars)
-                            </span>
-                            <span class="flex items-center gap-1.5 text-white/40">
-                                <span class="text-cyan-400">📍</span> Place du Méchouar (Circular Plaza), Laâyoune
-                            </span>
-                        </div>
-                        <span class="text-[10px] font-mono text-white/30 hidden sm:inline">
-                            Scroll or click +/- to Zoom · Drag to Pan
-                        </span>
-                    </div>
-                </div>
-
-                <!-- Camera Sector Localization Bar -->
-                <div class="p-2.5 sm:p-3 bg-surface-950/90 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
-                    <span class="text-xs text-white/40 font-medium">Active Laâyoune Camera Localization:</span>
-                    <div id="cameraNodesContainer" class="flex flex-wrap items-center gap-1.5">
-                    </div>
-                </div>
-            </div>
-            </div> <!-- End mode1MainView -->
-
-            <!-- ===================================================================== -->
-            <!-- MODE 2: TIFAWT-GUARD — 2x2 CAMERA GRID & RE-ID SEARCH PIPELINE       -->
-            <!-- ===================================================================== -->
-            <div id="mode2MainView" class="space-y-5 hidden">
-                <!-- Mode 2 Source & Status Toolbar -->
-                <div class="glass rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 border border-white/10">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-xs font-semibold text-white/50 uppercase tracking-wider">Search Target Feed:</span>
-                        <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
-                            <span class="w-2 h-2 rounded-full bg-amber-400 pulse-live"></span>
-                            <span>CAM 04: Sector Al-Quds</span>
-                        </span>
-                        <span id="reidStatusPill" class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                            <span>SCANNING ACTIVE</span>
-                        </span>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                        <select id="videoPresetSelect2" onchange="switchPresetVideo(this.value)" class="px-2.5 py-1.5 rounded-lg text-xs bg-white/5 hover:bg-white/10 text-white/80 border border-white/10 outline-none cursor-pointer">
-                            <option value="">-- Load Target CCTV Video --</option>
+                    <div class="flex items-center gap-1.5">
+                        <select id="videoPresetSelect" onchange="switchPresetVideo(this.value)" class="px-2.5 py-1 text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg outline-none cursor-pointer font-medium">
+                            <option value="">-- Load CCTV Video --</option>
                         </select>
-                        <button onclick="switchToWebcam()" title="Switch CAM 04 to live webcam" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/80 border border-white/10 transition flex items-center gap-1.5 cursor-pointer">
+                        <button id="btnWebcam" onclick="switchToWebcam()" title="Switch to live local webcam" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition flex items-center gap-1 cursor-pointer">
                             <span>📷</span> Webcam
                         </button>
-                        <label class="cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 transition flex items-center gap-1.5">
-                            <span>📁</span> Upload Search Video
-                            <input type="file" accept="video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm" class="hidden" onchange="uploadCctvVideo(this)">
+                        <label class="cursor-pointer px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white transition flex items-center gap-1 shadow-xs">
+                            <span>📁</span> Upload
+                            <input type="file" id="videoUploadInput" accept="video/mp4,video/avi,video/quicktime,video/x-matroska,video/webm" class="hidden" onchange="uploadCctvVideo(this)">
                         </label>
+                        <span id="uploadStatus" class="text-xs text-emerald-600 font-mono hidden">Uploading…</span>
                     </div>
                 </div>
 
-                <!-- 2x2 Multi-Camera Surveillance Grid -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <!-- CAM 01 (Local Feed: cctv1.mp4 looping) -->
-                    <div class="glass rounded-xl overflow-hidden border border-white/10 flex flex-col">
-                        <div class="px-3 py-2 bg-surface-950/80 border-b border-white/10 flex items-center justify-between text-xs">
-                            <div class="flex items-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
-                                <span class="font-bold font-mono text-white/90">CAM 01: Place du Méchouar</span>
-                            </div>
-                            <span class="text-[10px] font-mono text-emerald-400/80">LOCAL FEED • CCTV 1 (LOOP)</span>
-                        </div>
-                        <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
-                            <video id="cam1Video" src="/cctv1_feed" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
-                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/90 bg-black/80 px-2 py-0.5 rounded border border-emerald-500/20">
-                                ● REC [CCTV-01] • cctv1.mp4
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- CAM 02 (Local Feed: cctv2.mp4 looping) -->
-                    <div class="glass rounded-xl overflow-hidden border border-white/10 flex flex-col">
-                        <div class="px-3 py-2 bg-surface-950/80 border-b border-white/10 flex items-center justify-between text-xs">
-                            <div class="flex items-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
-                                <span class="font-bold font-mono text-white/90">CAM 02: Blvd Mohammed V</span>
-                            </div>
-                            <span class="text-[10px] font-mono text-emerald-400/80">LOCAL FEED • CCTV 2 (LOOP)</span>
-                        </div>
-                        <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
-                            <video id="cam2Video" src="/cctv2_feed" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
-                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/90 bg-black/80 px-2 py-0.5 rounded border border-emerald-500/20">
-                                ● REC [CCTV-02] • cctv2.mp4
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- CAM 03 (Local Feed: cctv3.jpg photo feed on repeat) -->
-                    <div class="glass rounded-xl overflow-hidden border border-white/10 flex flex-col">
-                        <div class="px-3 py-2 bg-surface-950/80 border-b border-white/10 flex items-center justify-between text-xs">
-                            <div class="flex items-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
-                                <span class="font-bold font-mono text-white/90">CAM 03: Al-Massira Souk</span>
-                            </div>
-                            <span class="text-[10px] font-mono text-cyan-400/80">LOCAL FEED • CCTV 3 (PHOTO)</span>
-                        </div>
-                        <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
-                            <img id="cam3Img" src="/cctv3_feed" class="w-full h-full object-cover" alt="CAM 03 Local CCTV Feed">
-                            <div class="absolute bottom-2 left-2 text-[9px] font-mono text-emerald-400/90 bg-black/80 px-2 py-0.5 rounded border border-emerald-500/20">
-                                ● LIVE [CCTV-03] • cctv3.jpg
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- CAM 04 (Dedicated Active Search Feed - Live YOLO & Re-ID) -->
-                    <div class="glass rounded-xl overflow-hidden border-2 border-amber-500/40 flex flex-col shadow-lg shadow-amber-500/5">
-                        <div class="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between text-xs">
-                            <div class="flex items-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-amber-400 pulse-live"></span>
-                                <span class="font-bold font-mono text-amber-300">CAM 04: Sector Al-Quds</span>
-                            </div>
-                            <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                🎯 DEDICATED RE-ID • 30 FPS
-                            </span>
-                        </div>
-                        <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
-                            <img id="cam4FeedImg" src="/video_feed" class="w-full h-full object-cover" alt="CAM 04 Live Search Feed">
-                            <div class="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/75 backdrop-blur-sm text-[10px] font-mono text-amber-400 border border-amber-500/30">
-                                <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
-                                <span>ACTIVE RE-ID MATCH SCANNER</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Live Alert Ticker & Match Gallery (Directly below 2x2 Grid) -->
-                <div class="glass rounded-xl p-4 border border-white/10 flex flex-col gap-3">
-                    <div class="flex items-center justify-between">
+                <!-- 1. HERO ACTIVE VIDEO (SIGNIFICANTLY BIGGER THAN AUXILIARY CAMS) -->
+                <div id="videoBorder" class="video-border rounded-xl overflow-hidden bg-slate-950 relative shadow-sm">
+                    <!-- Top HUD Overlay -->
+                    <div class="absolute top-0 left-0 right-0 z-10 px-3.5 py-2.5 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between text-xs">
                         <div class="flex items-center gap-2">
-                            <span class="text-sm">🎯</span>
-                            <h3 class="text-xs font-bold text-white uppercase tracking-wider">
+                            <span id="heroPulseDot" class="w-2.5 h-2.5 rounded-full bg-rose-500 pulse-live"></span>
+                            <span id="heroCamLabel" class="font-mono font-bold text-white text-xs sm:text-sm">CAM 04 · Elder Heart Attack Monitor</span>
+                            <span id="heroCamSub" class="hidden sm:inline text-[10px] font-mono px-2 py-0.5 rounded bg-white/20 text-white/90">Active Fall &amp; Collapse Detection</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="heroSourceBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40 font-semibold">Elder heart atack.mp4</span>
+                            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-black/60 text-emerald-400 border border-emerald-500/30 font-bold">LIVE AI • 30 FPS</span>
+                        </div>
+                    </div>
+
+                    <!-- The Main Video Stream -->
+                    <div class="relative w-full aspect-video flex items-center justify-center bg-black">
+                        <img id="videoFeed" src="/video_feed" class="w-full h-full object-contain bg-black" alt="Sahra-Eye Active Vision Feed">
+                    </div>
+
+                    <!-- Bottom HUD Overlay -->
+                    <div class="absolute bottom-0 left-0 right-0 z-10 px-3.5 py-2 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex items-center justify-between text-[11px] font-mono text-white/80">
+                        <span id="heroLocationLabel">📍 Place du Méchouar Sector · 640×480 @ OpenVINO</span>
+                        <span id="heroPrivacyBadge" class="text-emerald-400 font-semibold">● CNDP-0908 PRIVACY MASK ENFORCED</span>
+                    </div>
+                </div>
+
+                <!-- 2. THREE AUXILIARY CCTV FEEDS (SMALLER, 1/3 WIDTH EACH, ON REPEAT, NO DETECTION) -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5 px-0.5">
+                        <span class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Auxiliary CCTV Surveillance Sectors (No Detection · Continuous Feeds):</span>
+                        <span class="text-[10px] font-mono text-slate-400">3 CHANNELS ONLINE</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <!-- CAM 01 (Looping cctv1.mp4) -->
+                        <div class="bg-slate-50 rounded-xl overflow-hidden border border-slate-200/90 shadow-2xs flex flex-col">
+                            <div class="px-2.5 py-1.5 bg-white border-b border-slate-200/80 flex items-center justify-between text-[11px]">
+                                <div class="flex items-center gap-1.5 truncate">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                    <span class="font-bold text-slate-800 truncate">CAM 01: Place Méchouar</span>
+                                </div>
+                                <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0 font-medium">No Detection</span>
+                            </div>
+                            <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
+                                <video id="cam1Video" src="/cctv1_feed" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
+                                <div class="absolute bottom-1.5 left-2 text-[9px] font-mono text-emerald-300 bg-black/75 px-1.5 py-0.5 rounded">
+                                    ● cctv1.mp4 (Loop)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CAM 02 (Looping cctv2.mp4) -->
+                        <div class="bg-slate-50 rounded-xl overflow-hidden border border-slate-200/90 shadow-2xs flex flex-col">
+                            <div class="px-2.5 py-1.5 bg-white border-b border-slate-200/80 flex items-center justify-between text-[11px]">
+                                <div class="flex items-center gap-1.5 truncate">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                    <span class="font-bold text-slate-800 truncate">CAM 02: Blvd Mohammed V</span>
+                                </div>
+                                <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0 font-medium">No Detection</span>
+                            </div>
+                            <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
+                                <video id="cam2Video" src="/cctv2_feed" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
+                                <div class="absolute bottom-1.5 left-2 text-[9px] font-mono text-emerald-300 bg-black/75 px-1.5 py-0.5 rounded">
+                                    ● cctv2.mp4 (Loop)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CAM 03 (Photo cctv3.jpg) -->
+                        <div class="bg-slate-50 rounded-xl overflow-hidden border border-slate-200/90 shadow-2xs flex flex-col">
+                            <div class="px-2.5 py-1.5 bg-white border-b border-slate-200/80 flex items-center justify-between text-[11px]">
+                                <div class="flex items-center gap-1.5 truncate">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                    <span class="font-bold text-slate-800 truncate">CAM 03: Al-Massira Souk</span>
+                                </div>
+                                <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0 font-medium">No Detection</span>
+                            </div>
+                            <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
+                                <img id="cam3Img" src="/cctv3_feed" class="w-full h-full object-cover" alt="CAM 03 CCTV Photo">
+                                <div class="absolute bottom-1.5 left-2 text-[9px] font-mono text-cyan-300 bg-black/75 px-1.5 py-0.5 rounded">
+                                    ● cctv3.jpg (Photo)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ── TELEMETRY STATS ROW ───────────────────────── -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-xs">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Framerate</div>
+                    <div class="flex items-baseline gap-1 mt-1">
+                        <span id="statFps" class="text-2xl font-extrabold font-mono text-emerald-600">0</span>
+                        <span class="text-xs text-slate-400">fps</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-xs">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Pedestrians</div>
+                    <div class="flex items-baseline gap-1 mt-1">
+                        <span id="statPersons" class="text-2xl font-extrabold font-mono text-slate-900">0</span>
+                        <span class="text-xs text-slate-400">tracked</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-xs">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Alerts &amp; Incidents</div>
+                    <div class="flex items-baseline gap-1 mt-1">
+                        <span id="statAlerts" class="text-2xl font-extrabold font-mono text-rose-600">0</span>
+                        <span class="text-xs text-slate-400">total</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-xs">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Green Wave Corridor</div>
+                    <div class="mt-1">
+                        <span id="statGreenWave" class="text-lg font-bold font-mono text-slate-400">INACTIVE</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── MODE 1 FEATURE: LAÂYOUNE SMART CITY CORRIDOR MAP ── -->
+            <div id="mode1MainView" class="space-y-4">
+                <div class="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-xs flex flex-col">
+                    <!-- Map Toolbar -->
+                    <div class="p-3.5 sm:p-4 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h2 class="text-xs sm:text-sm font-bold text-slate-900 tracking-tight">
+                                    🗺️ Laâyoune Emergency Corridor Map — Hôpital Moulay Hassan to Place du Méchouar
+                                </h2>
+                                <span id="mapStatusBadge" class="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-slate-200 text-slate-700 font-mono">
+                                    ORGANIC CITY CIRCULATION
+                                </span>
+                            </div>
+                            <p id="mapSubtext" class="text-[11px] text-slate-500 mt-0.5">
+                                Realistic multi-turn streets &amp; roundabouts with circulating traffic. Drag to pan or use zoom controls.
+                            </p>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button type="button" onclick="randomizeCars()" title="Randomize Car Traffic Positions"
+                                    class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 shadow-xs transition cursor-pointer">
+                                <span>🔀</span> Randomize Cars
+                            </button>
+                            <button id="btnManualGreenWave" type="button" onclick="toggleManualGreenWave()"
+                                    class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs">
+                                <span>🚑</span> Test Faint &amp; Dispatch Ambulance
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Ambulance Navigation & GPS Bar -->
+                    <div id="ambulanceStatusBar" class="px-4 py-2 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs bg-white text-slate-700">
+                        <div class="flex items-center gap-2">
+                            <span id="ambulancePulseDot" class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                            <span class="text-sm">🚨</span>
+                            <span class="font-bold text-slate-900">Ambulance GPS (AMB-LAA-01):</span>
+                            <span id="ambulanceTurnStatus" class="text-slate-500 font-medium">Standby at Hôpital Moulay Hassan</span>
+                        </div>
+                        <div id="ambulanceTelemetryStats" class="flex items-center gap-3 font-mono tabular-nums text-[11px] text-slate-500">
+                            <span>Active Traffic: <strong id="trafficCarCount" class="text-slate-800 font-mono">24 vehicles</strong> circulating</span>
+                            <span>Destination: <strong class="text-emerald-700">Place du Méchouar</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Map SVG Canvas -->
+                    <div id="mapCanvasContainer" class="relative h-[420px] sm:h-[460px] w-full bg-[#111927] overflow-hidden select-none">
+                        <!-- Top-Right Interactive Map Zoom Controls -->
+                        <div class="absolute top-3 right-3 z-20 flex flex-col gap-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-700 p-1.5 rounded-xl shadow-lg">
+                            <button type="button" onclick="zoomInMap()" title="Zoom In" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-cyan-300 font-bold text-base cursor-pointer">+</button>
+                            <div id="mapZoomDisplay" class="text-[10px] font-mono tabular-nums text-center text-white/60 py-0.5">1.2x</div>
+                            <button type="button" onclick="zoomOutMap()" title="Zoom Out" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-cyan-300 font-bold text-base cursor-pointer">-</button>
+                            <button type="button" onclick="resetMapZoom()" title="Reset Zoom" class="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 text-xs cursor-pointer">⛶</button>
+                        </div>
+
+                        <!-- Top-Left Quick Focus Buttons -->
+                        <div class="absolute top-3 left-3 z-20 flex flex-wrap items-center gap-1.5">
+                            <button type="button" onclick="focusPlaceMechouar()" class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900/90 text-cyan-300 border border-cyan-500/40 backdrop-blur-md shadow cursor-pointer">
+                                <span>🎯</span> Focus Place du Méchouar
+                            </button>
+                            <button id="btnFollowAmbulance" type="button" onclick="toggleFollowAmbulance()" class="hidden items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900/90 text-emerald-400 border border-emerald-500/40 backdrop-blur-md shadow cursor-pointer">
+                                <span>🚑</span> Follow Ambulance
+                            </button>
+                        </div>
+
+                        <!-- The SVG Map Engine -->
+                        <svg id="laayouneMapSvg" viewBox="0 0 1080 620" class="w-full h-full object-cover cursor-grab" aria-label="Laâyoune City Corridor Map"></svg>
+
+                        <!-- Bottom Legend -->
+                        <div class="absolute bottom-2.5 left-3 right-3 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-lg px-3 py-1.5 text-xs flex flex-wrap items-center justify-between gap-2 pointer-events-none text-white/80">
+                            <div id="mapLegendContent" class="flex flex-wrap items-center gap-4 text-[11px]">
+                                <span><strong class="text-cyan-400">🧭</strong> City Traffic (24 Circulating Vehicles)</span>
+                                <span><strong class="text-emerald-400">📍</strong> Place du Méchouar Central Plaza</span>
+                            </div>
+                            <span class="text-[10px] font-mono text-white/40 hidden sm:inline">Scroll or +/- to Zoom · Drag to Pan</span>
+                        </div>
+                    </div>
+
+                    <!-- Sector Localization Bar -->
+                    <div class="p-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <span class="text-xs text-slate-500 font-medium">Laâyoune Urban Camera Sectors:</span>
+                        <div id="cameraNodesContainer" class="flex flex-wrap items-center gap-1.5"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── MODE 2 FEATURE: LIVE MISSING PERSON MATCH TICKER & EVIDENCE GALLERY ── -->
+            <div id="mode2MainView" class="space-y-4 hidden">
+                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col gap-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <div class="flex items-center gap-2">
+                            <span class="text-base">🎯</span>
+                            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">
                                 Live Missing Person Match Ticker &amp; Re-ID Evidence Gallery
                             </h3>
-                            <span id="reidMatchCounterBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold">
+                            <span id="reidMatchCounterBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200">
                                 0 MATCHES
                             </span>
                         </div>
-                        <button onclick="clearAllAlerts()" class="text-[10px] px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-white/40 hover:text-white border border-white/10 transition cursor-pointer font-mono flex items-center gap-1">
+                        <button onclick="clearAllAlerts()" class="text-[10px] px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition cursor-pointer font-mono flex items-center gap-1 font-semibold">
                             <span>✖</span> Clear Gallery
                         </button>
                     </div>
 
-                    <!-- Horizontal Scroll Stream -->
+                    <!-- Horizontal Scroll Stream of Candidate Matches -->
                     <div id="reidTickerContainer" class="flex items-center gap-3 overflow-x-auto custom-scroll py-2 min-h-[140px]">
-                        <div id="reidTickerEmpty" class="w-full flex flex-col items-center justify-center py-6 text-center text-white/20 gap-2">
-                            <div class="text-2xl opacity-30">🔍</div>
-                            <div class="text-xs font-mono">No target candidate detected yet — Scanning 4 CCTV sectors in real-time</div>
+                        <div id="reidTickerEmpty" class="w-full flex flex-col items-center justify-center py-6 text-center text-slate-400 gap-1.5">
+                            <div class="text-2xl opacity-40">🔍</div>
+                            <div class="text-xs font-mono font-medium">No target candidate detected yet — Scanning 4 CCTV sectors in real-time</div>
+                            <div class="text-[11px] text-slate-400">Enter a description or load a preset in the right panel to begin search</div>
                         </div>
                     </div>
                 </div>
             </div>
+
         </div>
 
-        <!-- ── RIGHT COLUMN: Controls + Alerts (1/3) ───────── -->
-        <div class="space-y-5">
+        <!-- ═══════════════════════════════════════════════════
+             RIGHT COLUMN: Mode Switcher & Operator Controls (1/3)
+             ═══════════════════════════════════════════════════ -->
+        <div class="space-y-4">
 
-            <!-- Mode Switcher -->
-            <div class="glass rounded-xl p-4">
-                <h2 class="text-xs font-bold text-white/50 uppercase tracking-widest mb-3">Operational Mode</h2>
+            <!-- Operational Mode Selection Card -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">Operational Mode</h2>
                 <div class="space-y-2">
                     <button id="mode1Btn" onclick="setMode(1)"
-                            class="mode-btn w-full text-left px-4 py-3.5 rounded-xl bg-najda/10 border border-najda/25 glow-najda cursor-pointer">
+                            class="card-interactive w-full text-left px-3.5 py-3 rounded-xl bg-rose-50 border-2 border-rose-500 cursor-pointer shadow-xs">
                         <div class="flex items-center justify-between">
                             <div>
-                                <div class="text-sm font-bold text-najda">1 — Najda-Vision</div>
-                                <div class="text-[11px] text-white/35 mt-0.5">Fall &amp; Medical Collapse Triage</div>
+                                <div class="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+                                    <span>❤️</span> 1 — Najda-Vision
+                                </div>
+                                <div class="text-[11px] text-rose-700/80 mt-0.5">Fall &amp; Heart Attack Collapse Triage</div>
                             </div>
-                            <div id="mode1Indicator" class="w-2.5 h-2.5 rounded-full bg-najda pulse-live"></div>
+                            <div id="mode1Indicator" class="w-2.5 h-2.5 rounded-full bg-rose-500 pulse-live"></div>
                         </div>
                     </button>
+
                     <button id="mode2Btn" onclick="setMode(2)"
-                            class="mode-btn w-full text-left px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-amber-400/40 transition cursor-pointer">
+                            class="card-interactive w-full text-left px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-400/80 transition cursor-pointer">
                         <div class="flex items-center justify-between">
                             <div>
-                                <div class="text-sm font-bold text-white/80">2 — Tifawt-Guard</div>
-                                <div class="text-[11px] text-white/35 mt-0.5">Missing Child &amp; Person Re-ID Search</div>
+                                <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                    <span>🔍</span> 2 — Tifawt-Guard
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-0.5">Missing Child &amp; Person Re-ID Search</div>
                             </div>
-                            <div id="mode2Indicator" class="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
-                        </div>
-                    </button>
-                    <button disabled
-                            class="mode-btn w-full text-left px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="text-sm font-medium text-white/25">3 — Infra Guard</div>
-                                <div class="text-[11px] text-white/15 mt-0.5">Critical Infrastructure Security</div>
-                            </div>
-                            <span class="text-[9px] px-2 py-0.5 rounded-full bg-white/5 text-white/20 font-mono uppercase tracking-wider">Phase 3</span>
+                            <div id="mode2Indicator" class="w-2.5 h-2.5 rounded-full bg-slate-300"></div>
                         </div>
                     </button>
                 </div>
             </div>
 
-            <!-- ===================================================================== -->
-            <!-- MODE 1 SIDEBAR: SYSTEM STATUS & COLLAPSE ALERTS                      -->
-            <!-- ===================================================================== -->
-            <div id="mode1Sidebar" class="space-y-5">
-                <!-- System Status -->
-                <div class="glass rounded-xl p-4">
-                    <h2 class="text-xs font-bold text-white/50 uppercase tracking-widest mb-3">System Status</h2>
-                    <div class="space-y-2.5 text-sm">
-                        <div class="flex items-center justify-between">
-                            <span class="text-white/35">Engine</span>
-                            <span class="flex items-center gap-1.5">
-                                <span class="w-1.5 h-1.5 rounded-full bg-najda"></span>
-                                <span class="text-najda font-mono text-xs">ACTIVE</span>
-                            </span>
+            <!-- ── MODE 1 SIDEBAR PANELS ──────────────────────── -->
+            <div id="mode1Sidebar" class="space-y-4">
+                <!-- Incident Alert Log -->
+                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col" style="max-height: 380px;">
+                    <div class="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-100">
+                        <div class="flex items-center gap-1.5">
+                            <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Incident Feed</h2>
+                            <span id="alertBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-mono font-bold">0</span>
                         </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-white/35">Privacy Mask</span>
-                            <span class="flex items-center gap-1.5">
-                                <span class="w-1.5 h-1.5 rounded-full bg-najda"></span>
-                                <span class="text-najda font-mono text-xs">ENFORCED</span>
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-white/35">Model</span>
-                            <span class="text-white/50 font-mono text-xs">YOLOv8n-pose</span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-white/35">Inference</span>
-                            <span class="text-white/50 font-mono text-xs">CPU / OpenVINO</span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-white/35">Resolution</span>
-                            <span class="text-white/50 font-mono text-xs">640 × 480</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Alert Log -->
-                <div class="glass rounded-xl p-4 flex flex-col" style="max-height:380px">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="flex items-center gap-2">
-                            <h2 class="text-xs font-bold text-white/50 uppercase tracking-widest">Alert Log</h2>
-                            <span id="alertBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-mono font-bold">0</span>
-                        </div>
-                        <button onclick="clearAllAlerts()" class="text-[10px] px-2.5 py-1 rounded-md bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 border border-white/10 transition cursor-pointer font-mono flex items-center gap-1">
-                            <span>✖</span> Dismiss Scene
+                        <button onclick="clearAllAlerts()" class="text-[10px] px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer font-mono font-semibold">
+                            Dismiss
                         </button>
                     </div>
-                    <div id="alertLog" class="flex-1 overflow-y-auto custom-scroll space-y-2 min-h-[80px]">
-                        <div class="flex flex-col items-center justify-center text-center py-8 gap-2">
-                            <div class="text-2xl opacity-20">🛡️</div>
-                            <div class="text-white/15 text-xs font-mono">No alerts — monitoring active</div>
+
+                    <div id="alertLog" class="flex-1 overflow-y-auto custom-scroll space-y-2 min-h-[90px]">
+                        <div class="flex flex-col items-center justify-center text-center py-8 gap-1 text-slate-400">
+                            <div class="text-2xl opacity-30">🛡️</div>
+                            <div class="text-xs font-mono">No active incidents detected</div>
+                            <div class="text-[10px]">Continuous AI monitoring on Place du Méchouar</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Emergency Contacts -->
-                <div class="glass rounded-xl p-4">
-                    <h2 class="text-xs font-bold text-white/50 uppercase tracking-widest mb-3">Emergency Contacts</h2>
-                    <div class="space-y-2">
-                        <div class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-red-500/5 border border-red-500/10 text-xs">
-                            <span class="text-white/45">🚑 Protection Civile</span>
-                            <span class="font-mono font-bold text-red-400">150</span>
+                <!-- System Diagnostics -->
+                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">Vision Engine Specs</h2>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-500">Pose Model</span>
+                            <span class="font-mono font-semibold text-slate-800">YOLOv8n-pose</span>
                         </div>
-                        <div class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-blue-500/5 border border-blue-500/10 text-xs">
-                            <span class="text-white/45">🚔 Police Laâyoune</span>
-                            <span class="font-mono font-bold text-blue-400">19</span>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-500">Inference Core</span>
+                            <span class="font-mono font-semibold text-slate-800">CPU / OpenVINO</span>
                         </div>
-                        <div class="flex items-center justify-between px-3 py-2.5 rounded-lg bg-amber-500/5 border border-amber-500/10 text-xs">
-                            <span class="text-white/45">🏥 Hôpital Hassan II</span>
-                            <span class="font-mono font-bold text-amber-400">0528-891-200</span>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-500">Privacy Compliance</span>
+                            <span class="font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Law 09-08 Active</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Emergency Dispatch Hotlines -->
+                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">Emergency Dispatch</h2>
+                    <div class="space-y-1.5 text-xs">
+                        <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-rose-50 border border-rose-100 text-rose-900 font-semibold">
+                            <span>🚑 Protection Civile</span>
+                            <span class="font-mono font-extrabold text-rose-700 text-sm">150</span>
+                        </div>
+                        <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-semibold">
+                            <span>🚔 Police Laâyoune</span>
+                            <span class="font-mono font-extrabold text-slate-900 text-sm">19</span>
+                        </div>
+                        <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-semibold">
+                            <span>🏥 Hôpital Moulay Hassan</span>
+                            <span class="font-mono font-semibold text-slate-700">0528-891-200</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- ===================================================================== -->
-            <!-- MODE 2 SIDEBAR: TIFAWT-GUARD OPERATOR SEARCH CONTROL PANEL           -->
-            <!-- ===================================================================== -->
-            <div id="mode2Sidebar" class="space-y-5 hidden">
-                <!-- AI Natural Language Search Card (Groq LLM Powered) -->
-                <div class="glass rounded-xl p-4 border border-amber-500/30 shadow-lg shadow-amber-500/10">
-                    <div class="flex items-center justify-between mb-2.5">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm">⚡</span>
-                            <h2 class="text-xs font-bold text-amber-400 uppercase tracking-widest">AI Natural Language Search</h2>
-                        </div>
-                        <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
-                            GROQ LLM
-                        </span>
-                    </div>
+            <!-- ── MODE 2 SIDEBAR PANELS ──────────────────────── -->
+            <div id="mode2Sidebar" class="space-y-4 hidden">
 
-                    <p class="text-[11px] text-white/50 mb-2 leading-relaxed">
-                        Input any physical description. Groq extracts 3-part anatomical features (Cap, Torso, Legs) &amp; compiles biometric priors:
-                    </p>
+                <!-- AI Natural Language Search (Groq LLM) -->
+                <div class="bg-white rounded-2xl p-4 border-2 border-amber-400 shadow-xs">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-sm">⚡</span>
+                            <h2 class="text-xs font-bold text-amber-900 uppercase tracking-wider">AI Natural Language Search</h2>
+                        </div>
+                        <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold">GROQ LLM</span>
+                    </div>
 
                     <div class="relative mb-2.5">
                         <textarea id="nlpSearchInput" rows="2"
-                                  class="w-full px-3 py-2 text-xs bg-surface-950/90 text-white border border-white/15 rounded-lg focus:border-amber-400 focus:outline-none custom-scroll placeholder-white/30"
-                                  placeholder="e.g., Young child wearing a red hat, yellow shirt, and jeans"></textarea>
+                                  class="w-full px-3 py-2 text-xs bg-slate-50 text-slate-800 border border-slate-200 rounded-xl focus:border-amber-500 focus:bg-white focus:outline-none custom-scroll placeholder-slate-400"
+                                  placeholder="e.g. Young child wearing a red hat, yellow shirt, and jeans"></textarea>
                     </div>
 
                     <!-- Instant Zero-Latency Preset Pills -->
                     <div class="mb-3">
-                        <div class="text-[10px] text-white/40 mb-1.5 font-medium">Quick Presets (Instant 0ms Bypass):</div>
+                        <div class="text-[10px] text-slate-400 mb-1.5 font-medium">Quick Presets (0ms Groq Bypass):</div>
                         <div class="flex flex-wrap gap-1.5">
-                            <button type="button" onclick="loadNlpPreset('preset_1')" class="text-[10px] px-2 py-1 rounded bg-red-500/15 text-red-300 border border-red-500/30 hover:bg-red-500/25 transition cursor-pointer flex items-center gap-1">
+                            <button type="button" onclick="loadNlpPreset('preset_1')" class="text-[10px] px-2 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 transition cursor-pointer flex items-center gap-1 font-semibold">
                                 <span>🔴</span> Kid: Red Cap + Yellow Shirt + Jeans
                             </button>
-                            <button type="button" onclick="loadNlpPreset('preset_2')" class="text-[10px] px-2 py-1 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 hover:bg-blue-500/25 transition cursor-pointer flex items-center gap-1">
-                                <span>🔵</span> Boy: Blue Hoodie + Dark Pants
+                            <button type="button" onclick="loadNlpPreset('preset_2')" class="text-[10px] px-2 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 transition cursor-pointer flex items-center gap-1 font-semibold">
+                                <span>🔵</span> Boy: Blue Hoodie
                             </button>
-                            <button type="button" onclick="loadNlpPreset('preset_4')" class="text-[10px] px-2 py-1 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition cursor-pointer flex items-center gap-1">
-                                <span>🟡</span> Student: Sports Jersey
+                            <button type="button" onclick="loadNlpPreset('preset_4')" class="text-[10px] px-2 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition cursor-pointer flex items-center gap-1 font-semibold">
+                                <span>🟡</span> Sports Jersey
                             </button>
                         </div>
                     </div>
 
                     <!-- Search Button -->
                     <button id="btnGroqSearch" onclick="searchByGroqDescription()"
-                            class="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-surface-950 font-bold text-xs shadow-md shadow-amber-500/20 transition cursor-pointer flex items-center justify-center gap-2">
+                            class="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-2">
                         <span id="groqSpinner" class="hidden animate-spin">⏳</span>
                         <span id="groqBtnIcon">🔍</span>
                         <span id="groqBtnText">Extract &amp; Search with Groq AI</span>
                     </button>
-                    <div id="groqStatusMsg" class="hidden text-[10px] font-mono mt-1.5 text-center text-amber-300"></div>
+                    <div id="nlpStatusMsg" class="hidden text-[10px] font-mono mt-1.5 text-center text-amber-800"></div>
                 </div>
 
-                <!-- Target Reference Card -->
-                <div class="glass rounded-xl p-4 border border-white/10 shadow-lg">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="flex items-center gap-2">
+                <!-- Active Reference Target Card -->
+                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+                    <div class="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-100">
+                        <div class="flex items-center gap-1.5">
                             <span class="text-sm">🎯</span>
-                            <h2 class="text-xs font-bold text-white/70 uppercase tracking-widest">Active Reference Target</h2>
+                            <h2 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Reference Target</h2>
                         </div>
-                        <button onclick="clearSearchTarget()" title="Clear active target" class="text-[10px] text-white/40 hover:text-red-400 font-mono transition cursor-pointer">
+                        <button onclick="clearSearchTarget()" title="Clear active target" class="text-[10px] text-slate-400 hover:text-rose-600 font-mono transition cursor-pointer">
                             ✕ Reset
                         </button>
                     </div>
 
                     <!-- Photo Upload Dropzone -->
-                    <label class="border border-dashed border-white/15 hover:border-amber-400/50 rounded-xl p-2.5 flex items-center justify-center gap-2.5 cursor-pointer transition bg-white/[0.02] hover:bg-amber-500/[0.04] text-center mb-3">
-                        <span class="text-base text-amber-400">📷</span>
+                    <label class="border border-dashed border-slate-300 hover:border-amber-500 rounded-xl p-2.5 flex items-center justify-center gap-2.5 cursor-pointer transition bg-slate-50 hover:bg-amber-50/50 text-center mb-3">
+                        <span class="text-base text-amber-600">📷</span>
                         <div class="text-left">
-                            <div class="text-xs font-bold text-white/90">Upload Reference Photo</div>
-                            <div class="text-[9px] text-white/35">YOLO Auto-crops person &amp; extracts 3-part features</div>
+                            <div class="text-xs font-bold text-slate-800">Upload Reference Photo</div>
+                            <div class="text-[10px] text-slate-400">YOLO auto-crops &amp; extracts 3-part colors</div>
                         </div>
                         <input type="file" id="targetPhotoInput" accept="image/*" class="hidden" onchange="uploadTargetPhotoFile(this)">
                     </label>
 
-                    <!-- Active Target Preview -->
-                    <div class="bg-surface-950/90 rounded-xl p-3 border border-white/10 flex gap-3 items-center">
-                        <div class="relative w-16 h-22 rounded-lg overflow-hidden bg-black border border-white/10 shrink-0 flex items-center justify-center">
+                    <!-- Target Profile Preview -->
+                    <div class="bg-slate-50 rounded-xl p-3 border border-slate-200/80 flex gap-3 items-center">
+                        <div class="relative w-16 h-20 rounded-lg overflow-hidden bg-slate-200 border border-slate-300 shrink-0 flex items-center justify-center">
                             <img id="targetRefThumb" src="" class="w-full h-full object-cover hidden" alt="Target Thumbnail">
-                            <div id="targetThumbPlaceholder" class="text-xs text-white/20 font-mono text-center">No Photo</div>
+                            <div id="targetThumbPlaceholder" class="text-[10px] text-slate-400 font-mono text-center">No Photo</div>
                         </div>
 
                         <div class="flex-1 min-w-0 space-y-1">
-                            <div id="targetRefLabel" class="text-xs font-bold text-white truncate">
+                            <div id="targetRefLabel" class="text-xs font-bold text-slate-900 truncate">
                                 Standby — Search or Select
                             </div>
 
-                            <!-- 3-Part Dominant Color Swatches -->
-                            <div class="grid grid-cols-1 gap-1 text-[10px] font-mono">
+                            <!-- 3-Part Color Swatches -->
+                            <div class="grid grid-cols-1 gap-0.5 text-[10px] font-mono">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-white/40 w-10">Head:</span>
-                                    <span id="targetHeadSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-slate-700"></span>
-                                    <span id="targetHeadHex" class="text-white/70">—</span>
+                                    <span class="text-slate-400 w-10">Head:</span>
+                                    <span id="targetHeadSwatch" class="w-3.5 h-3.5 rounded border border-slate-300 inline-block bg-slate-300"></span>
+                                    <span id="targetHeadHex" class="text-slate-600">—</span>
                                 </div>
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-white/40 w-10">Torso:</span>
-                                    <span id="targetTorsoSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-slate-700"></span>
-                                    <span id="targetTorsoHex" class="text-white/70">—</span>
+                                    <span class="text-slate-400 w-10">Torso:</span>
+                                    <span id="targetTorsoSwatch" class="w-3.5 h-3.5 rounded border border-slate-300 inline-block bg-slate-300"></span>
+                                    <span id="targetTorsoHex" class="text-slate-600">—</span>
                                 </div>
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-white/40 w-10">Legs:</span>
-                                    <span id="targetLegsSwatch" class="w-3.5 h-3.5 rounded border border-white/20 inline-block bg-slate-700"></span>
-                                    <span id="targetLegsHex" class="text-white/70">—</span>
+                                    <span class="text-slate-400 w-10">Legs:</span>
+                                    <span id="targetLegsSwatch" class="w-3.5 h-3.5 rounded border border-slate-300 inline-block bg-slate-300"></span>
+                                    <span id="targetLegsHex" class="text-slate-600">—</span>
                                 </div>
                             </div>
 
-                            <!-- Child Prior Badge / Button -->
                             <div class="pt-1">
-                                <button id="btnChildPrior" onclick="toggleChildPrior()" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-white/5 text-white/40 border border-white/10 transition flex items-center gap-1 cursor-pointer">
+                                <button id="btnChildPrior" onclick="toggleChildPrior()" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-white text-slate-500 border border-slate-200 transition flex items-center gap-1 cursor-pointer shadow-2xs">
                                     <span>👶</span> Child Prior: OFF
                                 </button>
                             </div>
@@ -1142,82 +1089,36 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Fast Demo Target Presets -->
-                <div class="glass rounded-xl p-4 border border-white/10">
-                    <h2 class="text-xs font-bold text-white/50 uppercase tracking-widest mb-3">Target Preset Library</h2>
-                    <div class="space-y-2">
-                        <button onclick="setTargetPreset('preset_1')" class="preset-btn w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
-                            <div class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-red-500 shrink-0"></span>
-                                <div>
-                                    <div class="text-xs font-bold text-white">Missing Kid (Red Cap, Yellow Shirt, Jeans)</div>
-                                    <div class="text-[10px] text-white/35">Target in kid missing.mp4</div>
-                                </div>
-                            </div>
-                            <span class="text-[10px] font-mono text-amber-400 font-bold">LOAD</span>
-                        </button>
-                        <button onclick="setTargetPreset('preset_2')" class="preset-btn w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
-                            <div class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-blue-500 shrink-0"></span>
-                                <div>
-                                    <div class="text-xs font-bold text-white">Missing Boy (Blue Hoodie &amp; Dark Pants)</div>
-                                    <div class="text-[10px] text-white/35">Urban search profile</div>
-                                </div>
-                            </div>
-                            <span class="text-[10px] font-mono text-amber-400 font-bold">LOAD</span>
-                        </button>
-                        <button onclick="setTargetPreset('preset_3')" class="preset-btn w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
-                            <div class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-red-600 shrink-0"></span>
-                                <div>
-                                    <div class="text-xs font-bold text-white">Missing Child (Red Jacket &amp; Jeans)</div>
-                                    <div class="text-[10px] text-white/35">High-contrast outerwear</div>
-                                </div>
-                            </div>
-                            <span class="text-[10px] font-mono text-amber-400 font-bold">LOAD</span>
-                        </button>
-                        <button onclick="setTargetPreset('preset_4')" class="preset-btn w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition flex items-center justify-between cursor-pointer">
-                            <div class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-yellow-500 shrink-0"></span>
-                                <div>
-                                    <div class="text-xs font-bold text-white">Student (Yellow/Green Sports Jersey)</div>
-                                    <div class="text-[10px] text-white/35">School sport dataset</div>
-                                </div>
-                            </div>
-                            <span class="text-[10px] font-mono text-amber-400 font-bold">LOAD</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Re-ID Similarity Threshold Slider -->
-                <div class="glass rounded-xl p-4 border border-white/10 space-y-3">
+                <!-- Re-ID Match Threshold Slider -->
+                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-2">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold text-white/50 uppercase tracking-widest">Re-ID Match Threshold</span>
-                        <span id="reidThresholdVal" class="text-sm font-extrabold font-mono text-amber-400">65%</span>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Similarity Threshold</span>
+                        <span id="reidThresholdVal" class="text-sm font-extrabold font-mono text-amber-600">65%</span>
                     </div>
                     <input type="range" id="thresholdSlider" min="45" max="90" value="65" oninput="updateReidThreshold(this.value)"
-                           class="w-full accent-amber-400 cursor-pointer">
-                    <div class="flex justify-between text-[10px] text-white/30 font-mono">
-                        <span>45% (Broad Recall)</span>
+                           class="w-full accent-amber-500 cursor-pointer">
+                    <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+                        <span>45% (Broad)</span>
                         <span>65% (Balanced)</span>
                         <span>90% (Strict)</span>
                     </div>
-                    <p class="text-[10px] text-white/35 leading-relaxed">
-                        Matches require 3 consecutive frames exceeding this threshold before sounding a confirmed dispatch alert.
-                    </p>
                 </div>
+
             </div>
+
         </div>
+
     </div>
+
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════
-     FOOTER
+     CLEAN MINIMALIST FOOTER
      ═══════════════════════════════════════════════════════════ -->
-<footer class="glass border-t border-white/5 mt-6">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/25 font-mono">
-        <span>🏜️ Sahra-Eye v1.0 — CNDP Law 09-08 Compliant</span>
-        <span>Laâyoune, Morocco — Edge AI • Zero Cloud Latency</span>
+<footer class="bg-white border-t border-slate-200 mt-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-400 font-mono">
+        <span>🏜️ Sahra-Eye v2.0 — CNDP Law 09-08 Privacy Compliant Edge Vision</span>
+        <span>École Supérieure de Technologie de Laâyoune (ESTL) • Zero Cloud Latency</span>
     </div>
 </footer>
 
@@ -1237,36 +1138,42 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
             // FPS
             const fpsEl = document.getElementById('statFps');
-            fpsEl.textContent = d.fps ?? '—';
-            fpsEl.className = 'text-2xl font-extrabold font-mono mt-1.5 ' + (
-                d.fps >= 25 ? 'text-najda' : d.fps >= 15 ? 'text-amber-400' : 'text-red-400'
-            );
+            if (fpsEl) {
+                fpsEl.textContent = d.fps ?? '—';
+                fpsEl.className = 'text-2xl font-extrabold font-mono ' + (
+                    d.fps >= 25 ? 'text-emerald-600' : d.fps >= 15 ? 'text-amber-600' : 'text-rose-600'
+                );
+            }
 
             // Persons
-            document.getElementById('statPersons').textContent = d.persons_count ?? 0;
+            const pEl = document.getElementById('statPersons');
+            if (pEl) pEl.textContent = d.persons_count ?? 0;
 
             // Alerts count
-            document.getElementById('statAlerts').textContent = d.alert_count ?? 0;
+            const aEl = document.getElementById('statAlerts');
+            if (aEl) aEl.textContent = d.alert_count ?? 0;
 
-            // Source Name
+            // Source Name Badge
             if (d.source_name) {
                 const nameEl = document.getElementById('activeSourceName');
                 if (nameEl) {
-                    nameEl.textContent = d.is_video_file ? `CCTV: ${d.source_name} (Looping)` : d.source_name;
+                    nameEl.textContent = d.is_video_file ? d.source_name : d.source_name;
                 }
             }
 
             // Green Wave
             const gwEl = document.getElementById('statGreenWave');
-            if (d.green_wave_active) {
-                gwEl.textContent = Math.round(d.green_wave_remaining) + 's';
-                gwEl.className = 'text-lg font-bold font-mono text-najda';
-                setMapGreenWave(true, d.green_wave_remaining);
-            } else {
-                gwEl.textContent = 'INACTIVE';
-                gwEl.className = 'text-lg font-bold font-mono text-white/25';
-                if (!isManualGreenWave) {
-                    setMapGreenWave(false, 0);
+            if (gwEl) {
+                if (d.green_wave_active) {
+                    gwEl.textContent = Math.round(d.green_wave_remaining) + 's';
+                    gwEl.className = 'text-lg font-bold font-mono text-emerald-600';
+                    setMapGreenWave(true, d.green_wave_remaining);
+                } else {
+                    gwEl.textContent = 'INACTIVE';
+                    gwEl.className = 'text-lg font-bold font-mono text-slate-400';
+                    if (!isManualGreenWave) {
+                        setMapGreenWave(false, 0);
+                    }
                 }
             }
 
@@ -1276,33 +1183,35 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
                 // Flash video border red briefly
                 const vb = document.getElementById('videoBorder');
-                vb.classList.add('alert-flash');
-                clearTimeout(alertFlashTimeout);
-                alertFlashTimeout = setTimeout(() => vb.classList.remove('alert-flash'), 2000);
+                if (vb) {
+                    vb.classList.add('alert-flash');
+                    clearTimeout(alertFlashTimeout);
+                    alertFlashTimeout = setTimeout(() => vb.classList.remove('alert-flash'), 2500);
+                }
 
                 // Badge
                 const badge = document.getElementById('alertBadge');
-                badge.textContent = d.alert_count;
-                badge.classList.remove('hidden');
+                if (badge) {
+                    badge.textContent = d.alert_count;
+                    badge.classList.remove('hidden');
+                }
 
                 // Render alerts (newest first)
                 const log = document.getElementById('alertLog');
-                log.innerHTML = d.alerts.slice().reverse().map(a => `
-                    <div class="alert-entry px-3 py-2.5 rounded-lg
-                        ${a.severity === 'critical'
-                            ? 'bg-red-500/10 border border-red-500/15'
-                            : 'bg-amber-500/10 border border-amber-500/15'}">
-                        <div class="flex items-center justify-between gap-2">
-                            <span class="text-xs font-bold
-                                ${a.severity === 'critical' ? 'text-red-400' : 'text-amber-400'}">
-                                ${a.message}
-                            </span>
-                            <span class="text-[10px] text-white/25 font-mono shrink-0">${a.timestamp}</span>
+                if (log) {
+                    log.innerHTML = d.alerts.slice().reverse().map(a => `
+                        <div class="alert-entry p-3 rounded-xl border ${a.severity === 'critical' ? 'bg-rose-50/80 border-rose-200 text-rose-900' : 'bg-amber-50/80 border-amber-200 text-amber-900'} shadow-2xs">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs font-bold ${a.severity === 'critical' ? 'text-rose-700' : 'text-amber-700'}">
+                                    ${a.message}
+                                </span>
+                                <span class="text-[10px] text-slate-400 font-mono shrink-0">${a.timestamp}</span>
+                            </div>
+                            ${a.details ? `<div class="text-[11px] text-slate-600 mt-1">${a.details}</div>` : ''}
+                            ${a.action  ? `<div class="text-[11px] font-semibold text-emerald-700 mt-0.5">→ ${a.action}</div>` : ''}
                         </div>
-                        ${a.details ? `<div class="text-[10px] text-white/25 mt-1 leading-relaxed">${a.details}</div>` : ''}
-                        ${a.action  ? `<div class="text-[10px] text-najda/60 mt-0.5">→ ${a.action}</div>` : ''}
-                    </div>
-                `).join('');
+                    `).join('');
+                }
             }
 
             // ── Mode 2: Tifawt-Guard Telemetry & Ticker Update ──
@@ -1340,18 +1249,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                         lSwatch.style.backgroundColor = ti.legs_hex;
                         if (lHex) lHex.textContent = ti.legs_hex;
                     }
-
-                    const statusPill = document.getElementById('reidStatusPill');
-                    if (statusPill) {
-                        statusPill.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span><span>SCANNING ACTIVE</span>';
-                        statusPill.className = "text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1";
-                    }
-                } else {
-                    const statusPill = document.getElementById('reidStatusPill');
-                    if (statusPill) {
-                        statusPill.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span><span>STANDBY</span>';
-                        statusPill.className = "text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1";
-                    }
                 }
 
                 // Render Re-ID Live Match Cards
@@ -1360,9 +1257,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                 if (matchCountBadge) {
                     matchCountBadge.textContent = `${reidMatches.length} MATCHES`;
                     if (reidMatches.length > 0) {
-                        matchCountBadge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold pulse-live";
+                        matchCountBadge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-300 pulse-live";
                     } else {
-                        matchCountBadge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold";
+                        matchCountBadge.className = "text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200";
                     }
                 }
 
@@ -1370,49 +1267,50 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                 if (tickerContainer) {
                     if (reidMatches.length === 0) {
                         tickerContainer.innerHTML = `
-                            <div id="reidTickerEmpty" class="w-full flex flex-col items-center justify-center py-6 text-center text-white/20 gap-2">
-                                <div class="text-2xl opacity-30">🔍</div>
-                                <div class="text-xs font-mono">No target candidate detected yet — Scanning 4 CCTV sectors in real-time</div>
+                            <div id="reidTickerEmpty" class="w-full flex flex-col items-center justify-center py-6 text-center text-slate-400 gap-1.5">
+                                <div class="text-2xl opacity-40">🔍</div>
+                                <div class="text-xs font-mono font-medium">No target candidate detected yet — Scanning 4 CCTV sectors in real-time</div>
+                                <div class="text-[11px] text-slate-400">Enter a description or load a preset in the right panel to begin search</div>
                             </div>
                         `;
                     } else {
                         tickerContainer.innerHTML = reidMatches.slice().reverse().map(m => `
-                            <div class="alert-entry shrink-0 w-80 p-3 rounded-xl bg-surface-950/95 border-2 border-emerald-500/50 shadow-lg shadow-emerald-500/10 flex flex-col gap-2.5">
+                            <div class="alert-entry shrink-0 w-80 p-3.5 rounded-2xl bg-white border-2 border-emerald-500 shadow-md flex flex-col gap-2.5">
                                 <div class="flex items-center justify-between">
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping"></span>
                                         <span>🎯 ${m.similarity}% MATCH</span>
                                     </span>
-                                    <span class="text-[10px] font-mono text-white/40">${m.timestamp}</span>
+                                    <span class="text-[10px] font-mono text-slate-400">${m.timestamp}</span>
                                 </div>
 
-                                <div class="flex items-center justify-between gap-2 bg-black/60 p-2 rounded-lg border border-white/5">
+                                <div class="flex items-center justify-between gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
                                     <div class="flex flex-col items-center gap-1 flex-1">
-                                        <span class="text-[9px] text-white/40 uppercase font-mono">Reference</span>
-                                        <div class="w-14 h-18 rounded overflow-hidden bg-surface-900 border border-white/10 flex items-center justify-center">
-                                            ${m.reference_thumb ? `<img src="${m.reference_thumb}" class="w-full h-full object-cover">` : '<span class="text-[8px] text-white/30">Ref</span>'}
+                                        <span class="text-[9px] text-slate-500 uppercase font-mono font-semibold">Reference</span>
+                                        <div class="w-14 h-18 rounded-lg overflow-hidden bg-slate-200 border border-slate-300 flex items-center justify-center">
+                                            ${m.reference_thumb ? `<img src="${m.reference_thumb}" class="w-full h-full object-cover">` : '<span class="text-[8px] text-slate-400">Ref</span>'}
                                         </div>
                                     </div>
-                                    <div class="text-xs text-emerald-400 font-bold font-mono">VS</div>
+                                    <div class="text-xs text-emerald-600 font-bold font-mono">VS</div>
                                     <div class="flex flex-col items-center gap-1 flex-1">
-                                        <span class="text-[9px] text-emerald-400 uppercase font-mono font-bold">Spotted Crop</span>
-                                        <div class="w-14 h-18 rounded overflow-hidden bg-surface-900 border-2 border-emerald-400/80 shadow-md shadow-emerald-500/20 flex items-center justify-center">
-                                            ${m.candidate_thumb ? `<img src="${m.candidate_thumb}" class="w-full h-full object-cover">` : '<span class="text-[8px] text-white/30">Crop</span>'}
+                                        <span class="text-[9px] text-emerald-700 uppercase font-mono font-bold">Spotted Crop</span>
+                                        <div class="w-14 h-18 rounded-lg overflow-hidden bg-slate-200 border-2 border-emerald-500 shadow-sm flex items-center justify-center">
+                                            ${m.candidate_thumb ? `<img src="${m.candidate_thumb}" class="w-full h-full object-cover">` : '<span class="text-[8px] text-slate-400">Crop</span>'}
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="text-[11px] font-bold text-white truncate">${m.message}</div>
-                                <div class="flex items-center justify-between text-[10px] text-white/40 font-mono">
+                                <div class="text-xs font-bold text-slate-900 truncate">${m.message}</div>
+                                <div class="flex items-center justify-between text-[10px] text-slate-500 font-mono">
                                     <span>📍 ${m.camera_id} (${m.zone_name})</span>
                                     <span>H:${m.head_sim || 0}% | T:${m.torso_sim}% | L:${m.legs_sim}%</span>
                                 </div>
 
-                                <div class="flex items-center gap-2 pt-1 border-t border-white/10">
-                                    <button onclick="alert('🚨 Security Patrol dispatched to ' + '${m.zone_name}')" class="flex-1 py-1 px-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-surface-950 font-bold text-[10px] transition cursor-pointer flex items-center justify-center gap-1">
+                                <div class="flex items-center gap-2 pt-1 border-t border-slate-100">
+                                    <button onclick="alert('🚨 Security Patrol dispatched to ' + '${m.zone_name}')" class="flex-1 py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center justify-center gap-1 shadow-xs">
                                         <span>🚔</span> Dispatch Patrol
                                     </button>
-                                    <button onclick="clearAllAlerts()" class="py-1 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 text-[10px] transition cursor-pointer">
+                                    <button onclick="clearAllAlerts()" class="py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-medium transition cursor-pointer">
                                         Dismiss
                                     </button>
                                 </div>
@@ -1422,7 +1320,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                 }
             }
 
-        } catch (e) { /* silent retry on next tick */ }
+        } catch (e) { /* silent retry */ }
     }
 
     // ── Video Source & CCTV Upload ───────────────────────
@@ -1457,7 +1355,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                 }
             }
         } catch (e) {
-            console.error('Upload error', e);
             if (statusEl) {
                 statusEl.textContent = 'Upload failed!';
                 setTimeout(() => statusEl.classList.add('hidden'), 3500);
@@ -1482,7 +1379,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                 fetchTelemetry();
             }
         } catch (e) {
-            console.error('Failed to switch to webcam', e);
             if (statusEl) {
                 statusEl.textContent = 'Switch failed!';
                 setTimeout(() => statusEl.classList.add('hidden'), 2000);
@@ -1523,11 +1419,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         const navM1 = document.getElementById('navMode1Btn');
         const navM2 = document.getElementById('navMode2Btn');
         if (navM1) navM1.className = isM1
-            ? "px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-najda text-surface-950 shadow-sm cursor-pointer"
-            : "px-3.5 py-1.5 rounded-lg font-bold text-white/50 hover:text-white transition flex items-center gap-1.5 cursor-pointer";
+            ? "px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-white text-slate-900 shadow-xs cursor-pointer border border-slate-200/60"
+            : "px-3.5 py-1.5 rounded-lg font-bold text-slate-500 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer";
         if (navM2) navM2.className = !isM1
-            ? "px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-amber-400 text-surface-950 shadow-sm cursor-pointer"
-            : "px-3.5 py-1.5 rounded-lg font-bold text-white/50 hover:text-white transition flex items-center gap-1.5 cursor-pointer";
+            ? "px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-white text-slate-900 shadow-xs cursor-pointer border border-slate-200/60"
+            : "px-3.5 py-1.5 rounded-lg font-bold text-slate-500 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer";
 
         // Sidebar buttons
         const m1Btn = document.getElementById('mode1Btn');
@@ -1535,26 +1431,55 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         const m1Ind = document.getElementById('mode1Indicator');
         const m2Ind = document.getElementById('mode2Indicator');
         if (m1Btn) m1Btn.className = isM1
-            ? "mode-btn w-full text-left px-4 py-3.5 rounded-xl bg-najda/10 border border-najda/25 glow-najda cursor-pointer"
-            : "mode-btn w-full text-left px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-white/20 transition cursor-pointer";
+            ? "card-interactive w-full text-left px-3.5 py-3 rounded-xl bg-rose-50 border-2 border-rose-500 cursor-pointer shadow-xs"
+            : "card-interactive w-full text-left px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition cursor-pointer";
         if (m2Btn) m2Btn.className = !isM1
-            ? "mode-btn w-full text-left px-4 py-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 shadow-lg shadow-amber-500/5 cursor-pointer"
-            : "mode-btn w-full text-left px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-amber-400/40 transition cursor-pointer";
-        if (m1Ind) m1Ind.className = isM1 ? "w-2.5 h-2.5 rounded-full bg-najda pulse-live" : "w-2.5 h-2.5 rounded-full bg-slate-600";
-        if (m2Ind) m2Ind.className = !isM1 ? "w-2.5 h-2.5 rounded-full bg-amber-400 pulse-live" : "w-2.5 h-2.5 rounded-full bg-slate-600";
+            ? "card-interactive w-full text-left px-3.5 py-3 rounded-xl bg-amber-50 border-2 border-amber-500 cursor-pointer shadow-xs"
+            : "card-interactive w-full text-left px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-400/80 transition cursor-pointer";
+        if (m1Ind) m1Ind.className = isM1 ? "w-2.5 h-2.5 rounded-full bg-rose-500 pulse-live" : "w-2.5 h-2.5 rounded-full bg-slate-300";
+        if (m2Ind) m2Ind.className = !isM1 ? "w-2.5 h-2.5 rounded-full bg-amber-500 pulse-live" : "w-2.5 h-2.5 rounded-full bg-slate-300";
 
         // Header Mode badge
         const badgeNum = document.getElementById('modeHeaderNumber');
         const badgeTitle = document.getElementById('modeHeaderTitle');
-        const badgeBox = document.getElementById('modeHeaderBadge');
         if (badgeNum) {
             badgeNum.textContent = isM1 ? "MODE 1" : "MODE 2";
-            badgeNum.className = isM1 ? "text-[11px] font-bold text-najda" : "text-[11px] font-bold text-amber-400";
+            badgeNum.className = isM1 ? "font-bold text-rose-600" : "font-bold text-amber-700";
         }
         if (badgeTitle) badgeTitle.textContent = isM1 ? "Najda-Vision" : "Tifawt-Guard";
-        if (badgeBox) badgeBox.className = isM1
-            ? "flex items-center gap-2 px-3 py-1.5 rounded-lg bg-najda/10 border border-najda/20"
-            : "flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20";
+
+        // Use Case Banners
+        const b1 = document.getElementById('useCaseBannerM1');
+        const b2 = document.getElementById('useCaseBannerM2');
+        if (b1) b1.classList.toggle('hidden', !isM1);
+        if (b2) b2.classList.toggle('hidden', isM1);
+
+        // Hero Camera Labels & Badges
+        const heroPulse = document.getElementById('heroPulseDot');
+        const heroCam = document.getElementById('heroCamLabel');
+        const heroSub = document.getElementById('heroCamSub');
+        const heroSrc = document.getElementById('heroSourceBadge');
+        const heroLoc = document.getElementById('heroLocationLabel');
+
+        if (isM1) {
+            if (heroPulse) heroPulse.className = "w-2.5 h-2.5 rounded-full bg-rose-500 pulse-live";
+            if (heroCam) heroCam.textContent = "CAM 04 · Elder Heart Attack Monitor";
+            if (heroSub) heroSub.textContent = "Active Fall & Collapse Detection";
+            if (heroSrc) {
+                heroSrc.textContent = "Elder heart atack.mp4";
+                heroSrc.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40 font-semibold";
+            }
+            if (heroLoc) heroLoc.textContent = "📍 Place du Méchouar Sector · 640×480 @ OpenVINO";
+        } else {
+            if (heroPulse) heroPulse.className = "w-2.5 h-2.5 rounded-full bg-amber-500 pulse-live";
+            if (heroCam) heroCam.textContent = "CAM 04 · Sector Al-Quds";
+            if (heroSub) heroSub.textContent = "Active Re-ID Missing Person Search";
+            if (heroSrc) {
+                heroSrc.textContent = "kid missing.mp4";
+                heroSrc.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-500/40 font-semibold";
+            }
+            if (heroLoc) heroLoc.textContent = "📍 Sector Al-Quds Surveillance Grid · 640×480 @ YOLO Re-ID";
+        }
 
         // Toggle Main Views
         const m1Main = document.getElementById('mode1MainView');
@@ -1567,126 +1492,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         const m2Side = document.getElementById('mode2Sidebar');
         if (m1Side) m1Side.classList.toggle('hidden', !isM1);
         if (m2Side) m2Side.classList.toggle('hidden', isM1);
-
-        // Start/Stop canvas simulation based on active mode
-        if (!isM1) {
-            startCamGridSimulation();
-        } else {
-            stopCamGridSimulation();
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    //  DECOUPLED 2x2 CANVAS SURVEILLANCE SIMULATION (CAM 1-3)
-    //  Zero Python CPU / Zero GIL Saturation — Pure Client-Side
-    // ═══════════════════════════════════════════════════════════
-    let camSimInterval = null;
-    let camSimFrame = 0;
-
-    const SIM_PEDS_CAM1 = [
-        { x: 80, y: 150, dx: 1.2, dy: 0.1, id: 101, w: 22, h: 48, col: '#10B981' },
-        { x: 380, y: 180, dx: -1.0, dy: -0.15, id: 104, w: 26, h: 56, col: '#06B6D4' },
-        { x: 220, y: 110, dx: 0.8, dy: 0.2, id: 107, w: 18, h: 38, col: '#3B82F6' }
-    ];
-    const SIM_PEDS_CAM2 = [
-        { x: 120, y: 140, dx: 1.4, dy: 0.1, id: 202, w: 24, h: 50, col: '#10B981' },
-        { x: 340, y: 160, dx: -1.1, dy: -0.1, id: 205, w: 26, h: 54, col: '#06B6D4' }
-    ];
-    const SIM_PEDS_CAM3 = [
-        { x: 60, y: 170, dx: 0.9, dy: -0.1, id: 301, w: 28, h: 60, col: '#10B981' },
-        { x: 260, y: 130, dx: 1.0, dy: 0.15, id: 308, w: 20, h: 44, col: '#3B82F6' },
-        { x: 420, y: 180, dx: -1.3, dy: -0.05, id: 312, w: 27, h: 58, col: '#06B6D4' }
-    ];
-
-    function drawCctvCanvas(canvasId, title, peds) {
-        const cvs = document.getElementById(canvasId);
-        if (!cvs) return;
-        const ctx = cvs.getContext('2d');
-        const W = cvs.width, H = cvs.height;
-
-        const grad = ctx.createLinearGradient(0, 0, 0, H);
-        grad.addColorStop(0, '#0a0f1d');
-        grad.addColorStop(0.45, '#1e293b');
-        grad.addColorStop(1, '#070a12');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, W, H);
-
-        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(W * 0.15, H * 0.45); ctx.lineTo(0, H);
-        ctx.moveTo(W * 0.85, H * 0.45); ctx.lineTo(W, H);
-        ctx.stroke();
-
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-        ctx.setLineDash([12, 10]);
-        ctx.beginPath();
-        ctx.moveTo(W * 0.50, H * 0.45); ctx.lineTo(W * 0.50, H);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.fillStyle = 'rgba(255,255,255,0.04)';
-        for (let i = 0; i < 6; i++) {
-            ctx.fillRect(35 + i * 72, H * 0.28, 52, H * 0.17);
-        }
-
-        peds.forEach(p => {
-            p.x += p.dx;
-            p.y += p.dy;
-            if (p.x < 30 || p.x > W - 50) p.dx *= -1;
-            if (p.y < H * 0.35 || p.y > H - 70) p.dy *= -1;
-
-            ctx.strokeStyle = p.col;
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(p.x, p.y, p.w, p.h);
-
-            ctx.fillStyle = p.col;
-            ctx.fillRect(p.x, p.y, 4, 4);
-            ctx.fillRect(p.x + p.w - 4, p.y, 4, 4);
-            ctx.fillRect(p.x, p.y + p.h - 4, 4, 4);
-            ctx.fillRect(p.x + p.w - 4, p.y + p.h - 4, 4, 4);
-
-            ctx.fillStyle = 'rgba(0,0,0,0.7)';
-            ctx.fillRect(p.x, p.y - 14, p.w + 14, 12);
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '9px monospace';
-            ctx.fillText(`ID #${p.id}`, p.x + 2, p.y - 4);
-        });
-
-        // Scanlines overlay
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-        for (let y = 0; y < H; y += 4) {
-            ctx.fillRect(0, y, W, 1);
-        }
-
-        // Live CCTV HUD Header
-        ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.fillRect(0, 0, W, 22);
-
-        ctx.fillStyle = '#00ff88';
-        ctx.font = '10px monospace';
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10);
-        const timeStr = now.toTimeString().slice(0, 8) + '.' + String(Math.floor(now.getMilliseconds() / 10)).padStart(2, '0');
-        ctx.fillText(`● REC ${title}  ${dateStr} ${timeStr}`, 8, 15);
-
-        ctx.fillStyle = 'rgba(255,255,255,0.4)';
-        ctx.fillText(`1080p25 • H.264`, W - 100, 15);
-    }
-
-    function startCamGridSimulation() {
-        // Ensure local videos (cctv1 and cctv2) play smoothly on loop
-        const v1 = document.getElementById('cam1Video');
-        const v2 = document.getElementById('cam2Video');
-        if (v1 && v1.paused) v1.play().catch(() => {});
-        if (v2 && v2.paused) v2.play().catch(() => {});
-    }
-
-    function stopCamGridSimulation() {
-        const v1 = document.getElementById('cam1Video');
-        const v2 = document.getElementById('cam2Video');
-        if (v1 && !v1.paused) v1.pause();
-        if (v2 && !v2.paused) v2.pause();
     }
 
     // ── Tifawt-Guard Handlers ────────────────────────────
