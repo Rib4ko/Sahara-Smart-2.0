@@ -15,6 +15,7 @@ import time
 import os
 import logging
 import base64
+import threading
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format="[Sahra-Eye] %(levelname)s: %(message)s")
@@ -616,6 +617,7 @@ class SahraEyeEngine:
 
     # ── Initialization ───────────────────────────────────────
     def __init__(self, source=0):
+        self._cap_lock = threading.Lock()
         self.source = source
         self.is_video_file = isinstance(source, str) and os.path.isfile(source)
         self.source_name = os.path.basename(source) if self.is_video_file else "Live Webcam"
@@ -694,21 +696,22 @@ class SahraEyeEngine:
 
     def switch_source(self, source, source_name=None):
         """Seamlessly switch between webcam and uploaded CCTV video file."""
-        if self.cap and self.cap.isOpened():
-            self.cap.release()
+        with self._cap_lock:
+            if self.cap and self.cap.isOpened():
+                self.cap.release()
 
-        self.source = source
-        self.is_video_file = isinstance(source, str) and os.path.isfile(source)
-        self.source_name = source_name or (os.path.basename(source) if self.is_video_file else "Live Webcam")
+            self.source = source
+            self.is_video_file = isinstance(source, str) and os.path.isfile(source)
+            self.source_name = source_name or (os.path.basename(source) if self.is_video_file else "Live Webcam")
 
-        self._init_camera()
+            self._init_camera()
 
-        # Reset tracking & alert states for the new video
-        self.tracker = PersonTracker()
-        self.alerts.clear()
-        self._logged_alert_keys.clear()
-        self.green_wave_active = False
-        logger.info(f"Video source switched → {self.source_name}")
+            # Reset tracking & alert states for the new video
+            self.tracker = PersonTracker()
+            self.alerts.clear()
+            self._logged_alert_keys.clear()
+            self.green_wave_active = False
+            logger.info(f"Video source switched → {self.source_name}")
 
     def clear_victims(self):
         """Manually clear all confirmed victims and active alerts (operator dismissal)."""
@@ -1590,27 +1593,26 @@ class SahraEyeEngine:
         """
         self._update_fps()
 
-        # ── Read frame ───────────────────────────────────────
-        if self.cap and self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if not ret or frame is None:
-                if self.is_video_file:
-                    # Seamless loop for uploaded CCTV / test video files
-                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    ret, frame = self.cap.read()
-                    # User requirement: When video ends, remove detections/markers and start over
-                    if self.current_mode == 1:
-                        self.tracker.clear_victims()
-                        self.tracker = PersonTracker()  # Fresh tracker with 0 residual bounding boxes
-                        self.alerts.clear()
-                        self._logged_alert_keys.clear()
-                        self.green_wave_active = False
-                        logger.info("Video looped → Mode 1 detections and fall markers cleared for fresh run.")
+        # ── Read frame (Thread-safe) ─────────────────────────
+        frame = None
+        with self._cap_lock:
+            if self.cap and self.cap.isOpened():
+                ret, frame = self.cap.read()
                 if not ret or frame is None:
-                    frame = self._generate_demo_frame()
-        else:
+                    if self.is_video_file:
+                        # Seamless loop for uploaded CCTV / test video files
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, frame = self.cap.read()
+                        # User requirement: When video ends, remove detections/markers and start over
+                        if self.current_mode == 1:
+                            self.tracker.clear_victims()
+                            self.tracker = PersonTracker()  # Fresh tracker with 0 residual bounding boxes
+                            self.alerts.clear()
+                            self._logged_alert_keys.clear()
+                            self.green_wave_active = False
+                            logger.info("Video looped → Mode 1 detections and fall markers cleared for fresh run.")
+        if frame is None:
             frame = self._generate_demo_frame()
-            return frame, self.get_telemetry()
 
         # ── Model Inference ───────────────────────────────────
         # Determine dynamic image resolution:
@@ -1728,6 +1730,7 @@ class SahraEyeEngine:
 
     def release(self):
         """Release camera and clean up."""
-        if self.cap:
-            self.cap.release()
+        with self._cap_lock:
+            if self.cap:
+                self.cap.release()
         logger.info("Engine released")
