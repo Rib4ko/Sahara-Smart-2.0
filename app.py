@@ -458,7 +458,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sahra-Eye | Laâyoune Smart City Vision</title>
-    <meta name="description" content="Edge AI Vision Engine for Laâyoune Smart City — Real-time fall detection and missing person search with CNDP Law 09-08 compliance">
+    <meta name="description" content="Vision Engine for Laâyoune Smart City — Real-time fall detection and missing person search">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -540,23 +540,18 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <!-- Mode Switcher Pill Toggle -->
         <div class="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/80 text-xs shadow-xs">
             <button id="navMode1Btn" onclick="setMode(1)" class="px-3.5 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 bg-white text-slate-900 shadow-xs cursor-pointer border border-slate-200/60">
-                <span>❤️</span> Mode 1: Najda-Vision
+                <span>❤️</span> Mode 1: Detect Heart Attacks
             </button>
             <button id="navMode2Btn" onclick="setMode(2)" class="px-3.5 py-1.5 rounded-lg font-bold text-slate-500 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer">
-                <span>🔍</span> Mode 2: Tifawt-Guard
+                <span>🔍</span> Mode 2: Search for a Missing Person
             </button>
         </div>
 
         <!-- Right System Badges -->
         <div class="flex items-center gap-2.5">
-            <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-[11px] font-mono">
-                <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-live"></span>
-                <span class="font-bold">CNDP 09-08</span>
-                <span class="text-[10px] text-emerald-600">Privacy Active</span>
-            </div>
             <div id="modeHeaderBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-[11px] font-mono">
                 <span id="modeHeaderNumber" class="font-bold text-rose-600">MODE 1</span>
-                <span id="modeHeaderTitle" class="text-slate-500">Najda-Vision</span>
+                <span id="modeHeaderTitle" class="text-slate-500">Detect Heart Attacks</span>
             </div>
             <div id="clock" class="text-xs font-mono font-semibold text-slate-500 hidden md:block"></div>
         </div>
@@ -577,15 +572,15 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             </div>
             <div>
                 <div class="flex items-center gap-2">
-                    <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-600 px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200/60">ACTIVE USE CASE</span>
-                    <h2 class="text-sm sm:text-base font-extrabold text-slate-900">Heart attacks &amp; sudden medical collapses detected early</h2>
+                    <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-600 px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200/60">ACTIVE</span>
+                    <h2 class="text-sm sm:text-base font-extrabold text-slate-900">Detect Heart Attacks</h2>
                 </div>
-                <p class="text-xs text-slate-500 mt-0.5">Real-time edge pose AI triage detects collapses in public spaces within 1.5s, alerting Protection Civile 150 &amp; activating green-wave ambulance corridors.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Real-time detection of sudden collapses in public spaces with emergency ambulance corridor dispatch.</p>
             </div>
         </div>
         <div class="flex items-center gap-2 text-xs font-mono font-semibold text-rose-700 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200/60">
             <span class="w-2 h-2 rounded-full bg-rose-500 pulse-live"></span>
-            <span>AUTONOMOUS TRIAGE ACTIVE</span>
+            <span>MONITORING ACTIVE</span>
         </div>
     </div>
 
@@ -597,15 +592,15 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             </div>
             <div>
                 <div class="flex items-center gap-2">
-                    <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-700 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200/60">ACTIVE USE CASE</span>
-                    <h2 class="text-sm sm:text-base font-extrabold text-slate-900">Missing children located in real-time across CCTV network</h2>
+                    <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-700 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200/60">ACTIVE</span>
+                    <h2 class="text-sm sm:text-base font-extrabold text-slate-900">Search for a Missing Person</h2>
                 </div>
-                <p class="text-xs text-slate-500 mt-0.5">Groq AI parses physical appearance into 3-part anatomical color models (Cap, Torso, Legs) with biometric child scale priors to locate targets across city cameras.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Locates missing persons in real-time across the cameras network.</p>
             </div>
         </div>
         <div class="flex items-center gap-2 text-xs font-mono font-semibold text-amber-800 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200/60">
             <span class="w-2 h-2 rounded-full bg-amber-500 pulse-live"></span>
-            <span>RE-ID SEARCH SCANNER ACTIVE</span>
+            <span>SEARCH ACTIVE</span>
         </div>
     </div>
 
@@ -613,7 +608,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <!-- ═══════════════════════════════════════════════════
-             LEFT COLUMN: Hero Camera + 3 CCTV Feeds + Stats + Map/Ticker (2/3)
+             LEFT COLUMN: Hero Camera + 3 Cameras Feeds + Stats + Map/Ticker (2/3)
              ═══════════════════════════════════════════════════ -->
         <div class="lg:col-span-2 space-y-4">
 
@@ -632,7 +627,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
                     <div class="flex items-center gap-1.5">
                         <select id="videoPresetSelect" onchange="switchPresetVideo(this.value)" class="px-2.5 py-1 text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg outline-none cursor-pointer font-medium">
-                            <option value="">-- Load CCTV Video --</option>
+                            <option value="">-- Select Camera Feed --</option>
                         </select>
                         <button id="btnWebcam" onclick="switchToWebcam()" title="Switch to live local webcam" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition flex items-center gap-1 cursor-pointer">
                             <span>📷</span> Webcam
@@ -645,14 +640,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- 1. HERO ACTIVE VIDEO (SIGNIFICANTLY BIGGER THAN AUXILIARY CAMS) -->
+                <!-- 1. HERO ACTIVE VIDEO -->
                 <div id="videoBorder" class="video-border rounded-xl overflow-hidden bg-slate-950 relative shadow-sm">
                     <!-- Top HUD Overlay -->
                     <div class="absolute top-0 left-0 right-0 z-10 px-3.5 py-2.5 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between text-xs">
                         <div class="flex items-center gap-2">
                             <span id="heroPulseDot" class="w-2.5 h-2.5 rounded-full bg-rose-500 pulse-live"></span>
-                            <span id="heroCamLabel" class="font-mono font-bold text-white text-xs sm:text-sm">CAM 04 · Elder Heart Attack Monitor</span>
-                            <span id="heroCamSub" class="hidden sm:inline text-[10px] font-mono px-2 py-0.5 rounded bg-white/20 text-white/90">Active Fall &amp; Collapse Detection</span>
+                            <span id="heroCamLabel" class="font-mono font-bold text-white text-xs sm:text-sm">CAM 04 · Place du Méchouar</span>
+                            <span id="heroCamSub" class="hidden sm:inline text-[10px] font-mono px-2 py-0.5 rounded bg-white/20 text-white/90">Detect Heart Attacks</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="heroSourceBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40 font-semibold">Elder heart atack.mp4</span>
@@ -667,66 +662,63 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
                     <!-- Bottom HUD Overlay -->
                     <div class="absolute bottom-0 left-0 right-0 z-10 px-3.5 py-2 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex items-center justify-between text-[11px] font-mono text-white/80">
-                        <span id="heroLocationLabel">📍 Place du Méchouar Sector · 640×480 @ OpenVINO</span>
-                        <span id="heroPrivacyBadge" class="text-emerald-400 font-semibold">● CNDP-0908 PRIVACY MASK ENFORCED</span>
+                        <span id="heroLocationLabel">📍 Place du Méchouar Sector</span>
+                        <span class="text-emerald-400 font-semibold">● LIVE</span>
                     </div>
                 </div>
 
-                <!-- 2. THREE AUXILIARY CCTV FEEDS (SMALLER, 1/3 WIDTH EACH, ON REPEAT, NO DETECTION) -->
+                <!-- 2. THREE AUXILIARY FEEDS (CAMERAS NETWORK) -->
                 <div>
                     <div class="flex items-center justify-between mb-1.5 px-0.5">
-                        <span class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Auxiliary CCTV Surveillance Sectors (No Detection · Continuous Feeds):</span>
+                        <span class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Cameras Network:</span>
                         <span class="text-[10px] font-mono text-slate-400">3 CHANNELS ONLINE</span>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <!-- CAM 01 (Looping cctv1.mp4) -->
+                        <!-- CAM 01 -->
                         <div class="bg-slate-50 rounded-xl overflow-hidden border border-slate-200/90 shadow-2xs flex flex-col">
                             <div class="px-2.5 py-1.5 bg-white border-b border-slate-200/80 flex items-center justify-between text-[11px]">
                                 <div class="flex items-center gap-1.5 truncate">
                                     <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
                                     <span class="font-bold text-slate-800 truncate">CAM 01: Place Méchouar</span>
                                 </div>
-                                <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0 font-medium">No Detection</span>
                             </div>
                             <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
                                 <video id="cam1Video" src="/cctv1_feed" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
                                 <div class="absolute bottom-1.5 left-2 text-[9px] font-mono text-emerald-300 bg-black/75 px-1.5 py-0.5 rounded">
-                                    ● cctv1.mp4 (Loop)
+                                    ● Camera 1
                                 </div>
                             </div>
                         </div>
 
-                        <!-- CAM 02 (Looping cctv2.mp4) -->
+                        <!-- CAM 02 -->
                         <div class="bg-slate-50 rounded-xl overflow-hidden border border-slate-200/90 shadow-2xs flex flex-col">
                             <div class="px-2.5 py-1.5 bg-white border-b border-slate-200/80 flex items-center justify-between text-[11px]">
                                 <div class="flex items-center gap-1.5 truncate">
                                     <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
                                     <span class="font-bold text-slate-800 truncate">CAM 02: Blvd Mohammed V</span>
                                 </div>
-                                <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0 font-medium">No Detection</span>
                             </div>
                             <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
                                 <video id="cam2Video" src="/cctv2_feed" autoplay loop muted playsinline class="w-full h-full object-cover"></video>
                                 <div class="absolute bottom-1.5 left-2 text-[9px] font-mono text-emerald-300 bg-black/75 px-1.5 py-0.5 rounded">
-                                    ● cctv2.mp4 (Loop)
+                                    ● Camera 2
                                 </div>
                             </div>
                         </div>
 
-                        <!-- CAM 03 (Photo cctv3.jpg) -->
+                        <!-- CAM 03 -->
                         <div class="bg-slate-50 rounded-xl overflow-hidden border border-slate-200/90 shadow-2xs flex flex-col">
                             <div class="px-2.5 py-1.5 bg-white border-b border-slate-200/80 flex items-center justify-between text-[11px]">
                                 <div class="flex items-center gap-1.5 truncate">
                                     <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
                                     <span class="font-bold text-slate-800 truncate">CAM 03: Al-Massira Souk</span>
                                 </div>
-                                <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 shrink-0 font-medium">No Detection</span>
                             </div>
                             <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
-                                <img id="cam3Img" src="/cctv3_feed" class="w-full h-full object-cover" alt="CAM 03 CCTV Photo">
+                                <img id="cam3Img" src="/cctv3_feed" class="w-full h-full object-cover" alt="CAM 03 Camera Feed">
                                 <div class="absolute bottom-1.5 left-2 text-[9px] font-mono text-cyan-300 bg-black/75 px-1.5 py-0.5 rounded">
-                                    ● cctv3.jpg (Photo)
+                                    ● Camera 3
                                 </div>
                             </div>
                         </div>
@@ -874,8 +866,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     <div id="reidTickerContainer" class="flex items-center gap-3 overflow-x-auto custom-scroll py-2 min-h-[140px]">
                         <div id="reidTickerEmpty" class="w-full flex flex-col items-center justify-center py-6 text-center text-slate-400 gap-1.5">
                             <div class="text-2xl opacity-40">🔍</div>
-                            <div class="text-xs font-mono font-medium">No target candidate detected yet — Scanning 4 CCTV sectors in real-time</div>
-                            <div class="text-[11px] text-slate-400">Enter a description or load a preset in the right panel to begin search</div>
+                            <div class="text-xs font-mono font-medium">No target detected — Scanning cameras network in real-time</div>
+                            <div class="text-[11px] text-slate-400">Enter a description or choose a target to begin search</div>
                         </div>
                     </div>
                 </div>
@@ -895,11 +887,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     <button id="mode1Btn" onclick="setMode(1)"
                             class="card-interactive w-full text-left px-3.5 py-3 rounded-xl bg-rose-50 border-2 border-rose-500 cursor-pointer shadow-xs">
                         <div class="flex items-center justify-between">
-                            <div>
-                                <div class="text-xs font-bold text-rose-900 flex items-center gap-1.5">
-                                    <span>❤️</span> 1 — Najda-Vision
-                                </div>
-                                <div class="text-[11px] text-rose-700/80 mt-0.5">Fall &amp; Heart Attack Collapse Triage</div>
+                            <div class="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+                                <span>❤️</span> Mode 1: Detect Heart Attacks
                             </div>
                             <div id="mode1Indicator" class="w-2.5 h-2.5 rounded-full bg-rose-500 pulse-live"></div>
                         </div>
@@ -908,11 +897,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     <button id="mode2Btn" onclick="setMode(2)"
                             class="card-interactive w-full text-left px-3.5 py-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-400/80 transition cursor-pointer">
                         <div class="flex items-center justify-between">
-                            <div>
-                                <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                    <span>🔍</span> 2 — Tifawt-Guard
-                                </div>
-                                <div class="text-[11px] text-slate-500 mt-0.5">Missing Child &amp; Person Re-ID Search</div>
+                            <div class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <span>🔍</span> Mode 2: Search for a Missing Person
                             </div>
                             <div id="mode2Indicator" class="w-2.5 h-2.5 rounded-full bg-slate-300"></div>
                         </div>
@@ -937,27 +923,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     <div id="alertLog" class="flex-1 overflow-y-auto custom-scroll space-y-2 min-h-[90px]">
                         <div class="flex flex-col items-center justify-center text-center py-8 gap-1 text-slate-400">
                             <div class="text-2xl opacity-30">🛡️</div>
-                            <div class="text-xs font-mono">No active incidents detected</div>
-                            <div class="text-[10px]">Continuous AI monitoring on Place du Méchouar</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- System Diagnostics -->
-                <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
-                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">Vision Engine Specs</h2>
-                    <div class="space-y-2 text-xs">
-                        <div class="flex items-center justify-between">
-                            <span class="text-slate-500">Pose Model</span>
-                            <span class="font-mono font-semibold text-slate-800">YOLOv8n-pose</span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-slate-500">Inference Core</span>
-                            <span class="font-mono font-semibold text-slate-800">CPU / OpenVINO</span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-slate-500">Privacy Compliance</span>
-                            <span class="font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Law 09-08 Active</span>
+                            <div class="text-xs font-mono">No incidents detected</div>
+                            <div class="text-[10px]">Monitoring Place du Méchouar</div>
                         </div>
                     </div>
                 </div>
@@ -985,14 +952,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             <!-- ── MODE 2 SIDEBAR PANELS ──────────────────────── -->
             <div id="mode2Sidebar" class="space-y-4 hidden">
 
-                <!-- AI Natural Language Search (Groq LLM) -->
+                <!-- Search by Description -->
                 <div class="bg-white rounded-2xl p-4 border-2 border-amber-400 shadow-xs">
                     <div class="flex items-center justify-between mb-2">
                         <div class="flex items-center gap-1.5">
                             <span class="text-sm">⚡</span>
-                            <h2 class="text-xs font-bold text-amber-900 uppercase tracking-wider">AI Natural Language Search</h2>
+                            <h2 class="text-xs font-bold text-amber-900 uppercase tracking-wider">Search by Description</h2>
                         </div>
-                        <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 font-bold">GROQ LLM</span>
                     </div>
 
                     <div class="relative mb-2.5">
@@ -1001,9 +967,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                                   placeholder="e.g. Young child wearing a red hat, yellow shirt, and jeans"></textarea>
                     </div>
 
-                    <!-- Instant Zero-Latency Preset Pills -->
+                    <!-- Preset Options -->
                     <div class="mb-3">
-                        <div class="text-[10px] text-slate-400 mb-1.5 font-medium">Quick Presets (0ms Groq Bypass):</div>
                         <div class="flex flex-wrap gap-1.5">
                             <button type="button" onclick="loadNlpPreset('preset_1')" class="text-[10px] px-2 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 transition cursor-pointer flex items-center gap-1 font-semibold">
                                 <span>🔴</span> Kid: Red Cap + Yellow Shirt + Jeans
@@ -1022,17 +987,17 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                             class="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-2">
                         <span id="groqSpinner" class="hidden animate-spin">⏳</span>
                         <span id="groqBtnIcon">🔍</span>
-                        <span id="groqBtnText">Extract &amp; Search with Groq AI</span>
+                        <span id="groqBtnText">Search Person</span>
                     </button>
                     <div id="nlpStatusMsg" class="hidden text-[10px] font-mono mt-1.5 text-center text-amber-800"></div>
                 </div>
 
-                <!-- Active Reference Target Card -->
+                <!-- Active Target Card -->
                 <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
                     <div class="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-100">
                         <div class="flex items-center gap-1.5">
                             <span class="text-sm">🎯</span>
-                            <h2 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Reference Target</h2>
+                            <h2 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Active Target</h2>
                         </div>
                         <button onclick="clearSearchTarget()" title="Clear active target" class="text-[10px] text-slate-400 hover:text-rose-600 font-mono transition cursor-pointer">
                             ✕ Reset
@@ -1043,8 +1008,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     <label class="border border-dashed border-slate-300 hover:border-amber-500 rounded-xl p-2.5 flex items-center justify-center gap-2.5 cursor-pointer transition bg-slate-50 hover:bg-amber-50/50 text-center mb-3">
                         <span class="text-base text-amber-600">📷</span>
                         <div class="text-left">
-                            <div class="text-xs font-bold text-slate-800">Upload Reference Photo</div>
-                            <div class="text-[10px] text-slate-400">YOLO auto-crops &amp; extracts 3-part colors</div>
+                            <div class="text-xs font-bold text-slate-800">Upload Photo</div>
+                            <div class="text-[10px] text-slate-400">Auto-detects target colors</div>
                         </div>
                         <input type="file" id="targetPhotoInput" accept="image/*" class="hidden" onchange="uploadTargetPhotoFile(this)">
                     </label>
@@ -1058,7 +1023,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
                         <div class="flex-1 min-w-0 space-y-1">
                             <div id="targetRefLabel" class="text-xs font-bold text-slate-900 truncate">
-                                Standby — Search or Select
+                                Standby
                             </div>
 
                             <!-- 3-Part Color Swatches -->
@@ -1082,14 +1047,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
                             <div class="pt-1">
                                 <button id="btnChildPrior" onclick="toggleChildPrior()" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-white text-slate-500 border border-slate-200 transition flex items-center gap-1 cursor-pointer shadow-2xs">
-                                    <span>👶</span> Child Prior: OFF
+                                    <span>👶</span> Child Filter: OFF
                                 </button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Re-ID Match Threshold Slider -->
+                <!-- Similarity Threshold Slider -->
                 <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-2">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Similarity Threshold</span>
@@ -1098,9 +1063,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                     <input type="range" id="thresholdSlider" min="45" max="90" value="65" oninput="updateReidThreshold(this.value)"
                            class="w-full accent-amber-500 cursor-pointer">
                     <div class="flex justify-between text-[10px] text-slate-400 font-mono">
-                        <span>45% (Broad)</span>
-                        <span>65% (Balanced)</span>
-                        <span>90% (Strict)</span>
+                        <span>45%</span>
+                        <span>65%</span>
+                        <span>90%</span>
                     </div>
                 </div>
 
@@ -1117,8 +1082,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
      ═══════════════════════════════════════════════════════════ -->
 <footer class="bg-white border-t border-slate-200 mt-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-400 font-mono">
-        <span>🏜️ Sahra-Eye v2.0 — CNDP Law 09-08 Privacy Compliant Edge Vision</span>
-        <span>École Supérieure de Technologie de Laâyoune (ESTL) • Zero Cloud Latency</span>
+        <span>🏜️ Sahra-Eye v2.0 — Smart City Vision</span>
+        <span>École Supérieure de Technologie de Laâyoune (ESTL)</span>
     </div>
 </footer>
 
@@ -1269,8 +1234,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                         tickerContainer.innerHTML = `
                             <div id="reidTickerEmpty" class="w-full flex flex-col items-center justify-center py-6 text-center text-slate-400 gap-1.5">
                                 <div class="text-2xl opacity-40">🔍</div>
-                                <div class="text-xs font-mono font-medium">No target candidate detected yet — Scanning 4 CCTV sectors in real-time</div>
-                                <div class="text-[11px] text-slate-400">Enter a description or load a preset in the right panel to begin search</div>
+                                <div class="text-xs font-mono font-medium">No target detected — Scanning cameras network in real-time</div>
+                                <div class="text-[11px] text-slate-400">Enter a description or choose a target to begin search</div>
                             </div>
                         `;
                     } else {
@@ -1446,7 +1411,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             badgeNum.textContent = isM1 ? "MODE 1" : "MODE 2";
             badgeNum.className = isM1 ? "font-bold text-rose-600" : "font-bold text-amber-700";
         }
-        if (badgeTitle) badgeTitle.textContent = isM1 ? "Najda-Vision" : "Tifawt-Guard";
+        if (badgeTitle) badgeTitle.textContent = isM1 ? "Detect Heart Attacks" : "Search for a Missing Person";
 
         // Use Case Banners
         const b1 = document.getElementById('useCaseBannerM1');
@@ -1463,22 +1428,22 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
         if (isM1) {
             if (heroPulse) heroPulse.className = "w-2.5 h-2.5 rounded-full bg-rose-500 pulse-live";
-            if (heroCam) heroCam.textContent = "CAM 04 · Elder Heart Attack Monitor";
-            if (heroSub) heroSub.textContent = "Active Fall & Collapse Detection";
+            if (heroCam) heroCam.textContent = "CAM 04 · Place du Méchouar";
+            if (heroSub) heroSub.textContent = "Detect Heart Attacks";
             if (heroSrc) {
                 heroSrc.textContent = "Elder heart atack.mp4";
                 heroSrc.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40 font-semibold";
             }
-            if (heroLoc) heroLoc.textContent = "📍 Place du Méchouar Sector · 640×480 @ OpenVINO";
+            if (heroLoc) heroLoc.textContent = "📍 Place du Méchouar Sector";
         } else {
             if (heroPulse) heroPulse.className = "w-2.5 h-2.5 rounded-full bg-amber-500 pulse-live";
             if (heroCam) heroCam.textContent = "CAM 04 · Sector Al-Quds";
-            if (heroSub) heroSub.textContent = "Active Re-ID Missing Person Search";
+            if (heroSub) heroSub.textContent = "Search for a Missing Person";
             if (heroSrc) {
                 heroSrc.textContent = "kid missing.mp4";
                 heroSrc.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 border border-amber-500/40 font-semibold";
             }
-            if (heroLoc) heroLoc.textContent = "📍 Sector Al-Quds Surveillance Grid · 640×480 @ YOLO Re-ID";
+            if (heroLoc) heroLoc.textContent = "📍 Sector Al-Quds";
         }
 
         // Toggle Main Views
@@ -1494,7 +1459,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         if (m2Side) m2Side.classList.toggle('hidden', isM1);
     }
 
-    // ── Tifawt-Guard Handlers ────────────────────────────
+    // ── Mode 2 Handlers ────────────────────────────
     async function searchByGroqDescription() {
         const input = document.getElementById('nlpSearchInput');
         const spinner = document.getElementById('groqSpinner');
@@ -1515,7 +1480,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         if (spinner) spinner.classList.remove('hidden');
         if (btn) btn.disabled = true;
         if (statusEl) {
-            statusEl.textContent = 'Querying Groq LLM (LLaMA-3) & extracting visual schema…';
+            statusEl.textContent = 'Searching description…';
             statusEl.className = 'text-[11px] text-amber-300 font-mono animate-pulse';
             statusEl.classList.remove('hidden');
         }
@@ -1566,7 +1531,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         }
 
         if (statusEl) {
-            statusEl.textContent = 'Instant preset loaded (0ms Groq bypass active)';
+            statusEl.textContent = 'Preset loaded';
             statusEl.className = 'text-[11px] text-emerald-400 font-mono';
             statusEl.classList.remove('hidden');
             setTimeout(() => statusEl.classList.add('hidden'), 3500);
@@ -1647,7 +1612,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                 btn.className = active
                     ? "px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 transition flex items-center gap-1 cursor-pointer"
                     : "px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-white/5 text-white/40 border border-white/10 transition flex items-center gap-1 cursor-pointer";
-                btn.innerHTML = `<span>👶</span> Child Scale Prior: ${active ? 'ACTIVE' : 'OFF'}`;
+                btn.innerHTML = `<span>👶</span> Child Filter: ${active ? 'ACTIVE' : 'OFF'}`;
             }
         } catch(e) {}
     }
@@ -1665,7 +1630,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             const data = await res.json();
             const sel1 = document.getElementById('videoPresetSelect');
             const sel2 = document.getElementById('videoPresetSelect2');
-            const optsHtml = '<option value="">-- Select CCTV Preset --</option>' + 
+            const optsHtml = '<option value="">-- Select Camera Feed --</option>' + 
                 (data.videos || []).map(v => `<option value="${v}">${v}</option>`).join('');
             if (sel1) sel1.innerHTML = optsHtml;
             if (sel2) sel2.innerHTML = optsHtml;

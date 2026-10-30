@@ -626,8 +626,8 @@ class SahraEyeEngine:
         self.pose_model = None
         self.current_mode = 1
         self.mode_names = {
-            1: "Najda-Vision",
-            2: "Tifawt-Guard",
+            1: "Detect Heart Attacks",
+            2: "Search for a Missing Person",
             3: "Infra Guard",
         }
 
@@ -945,7 +945,7 @@ class SahraEyeEngine:
             )
             cv2.putText(
                 frame,
-                "CNDP-0908 PRIVACY",
+                "PRIVACY ACTIVE",
                 (hx1 + 4, badge_y + 12),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.35,
@@ -1265,13 +1265,13 @@ class SahraEyeEngine:
                                 "severity": "critical",
                                 "camera_id": "CAM 04",
                                 "cam_id": "CAM 04 (Sector Al-Quds)",
-                                "zone_name": "Sector Al-Quds / CCTV-04",
+                                "zone_name": "Sector Al-Quds / Camera 04",
                                 "timestamp": datetime.now().strftime("%H:%M:%S"),
                                 "similarity": round(smoothed_sim * 100, 1),
                                 "head_sim": round(sim_h * 100, 1),
                                 "torso_sim": round(sim_t * 100, 1),
                                 "legs_sim": round(sim_l * 100, 1),
-                                "message": f"🎯 TARGET ACQUIRED ({round(smoothed_sim*100, 1)}%) — Person #{track_id}",
+                                "message": f"🎯 Target Found ({round(smoothed_sim*100, 1)}%) — Person #{track_id}",
                                 "details": f"Head: {round(sim_h*100, 1)}% | Torso: {round(sim_t*100, 1)}% | Legs: {round(sim_l*100, 1)}%",
                                 "action": "Awaiting Operator Dispatch / Confirmation",
                                 "candidate_thumb": b64_thumb,
@@ -1491,26 +1491,12 @@ class SahraEyeEngine:
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA,
         )
 
-        # ── Bottom CNDP bar ──────────────────────────────────
-        if self.enable_cndp_blur:
-            cv2.rectangle(frame, (0, h - 24), (w, h), (0, 70, 40), -1)
-            cv2.putText(
-                frame,
-                "CNDP Law 09-08 | Privacy-First Active | All faces masked by default",
-                (10, h - 7),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.35,
-                (200, 255, 200),
-                1,
-                cv2.LINE_AA,
-            )
-
         # ── Mode 2 HUD Info Bar ──────────────────────────────
         if self.current_mode == 2:
             if self.reid_matcher.has_target():
                 t_lbl = self.reid_matcher.reference_target.get("label", "Target")
                 thresh_pct = int(self.reid_matcher.threshold * 100)
-                hud_txt = f"🔍 Tifawt-Guard ACTIVE | Target: {t_lbl} | Min Match: {thresh_pct}%"
+                hud_txt = f"🔍 SEARCH ACTIVE | Target: {t_lbl} | Min Match: {thresh_pct}%"
                 cv2.rectangle(frame, (0, h - 26), (w, h), (20, 30, 20), -1)
                 cv2.putText(
                     frame, hud_txt, (10, h - 8),
@@ -1519,7 +1505,7 @@ class SahraEyeEngine:
             else:
                 cv2.rectangle(frame, (0, h - 26), (w, h), (30, 20, 20), -1)
                 cv2.putText(
-                    frame, "⚠ Tifawt-Guard STANDBY — Awaiting Target Photo / Preset Selection", (10, h - 8),
+                    frame, "⚠ SEARCH STANDBY — Awaiting Target Selection", (10, h - 8),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.42, (200, 200, 200), 1, cv2.LINE_AA,
                 )
 
