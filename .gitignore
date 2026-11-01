@@ -7,3 +7,8 @@ __pycache__/
 .vscode/
 .env
 *.env
+
+# Local media uploads & exports
+uploads/
+architecture.html
+*.log
