@@ -1,0 +1,48 @@
+name: Daily Activity Sync
+
+on:
+  schedule:
+    # Runs everyday at 22:00 UTC (10:00 PM)
+    - cron: '0 22 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI anytime
+
+permissions:
+  contents: write
+
+jobs:
+  daily-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Activity Log
+        run: |
+          mkdir -p .github/activity
+          TODAY=$(date -u +"%Y-%m-%d")
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%SZ")
+          LOG_FILE=".github/activity/DAILY_LOG.md"
+
+          if [ ! -f "$LOG_FILE" ]; then
+            echo "# Repository Daily Health & Activity Log" > "$LOG_FILE"
+            echo "Automated daily updates to keep the repository active and tracked." >> "$LOG_FILE"
+            echo "" >> "$LOG_FILE"
+            echo "| Date | Status | Trigger |" >> "$LOG_FILE"
+            echo "| :--- | :--- | :--- |" >> "$LOG_FILE"
+          fi
+
+          echo "| $TODAY | Active & Verified | Cloud Scheduled Sync at $TIMESTAMP |" >> "$LOG_FILE"
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/activity/DAILY_LOG.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(activity): automated daily sync [$(date -u +'%Y-%m-%d')]"
+            git push origin main
+          fi
