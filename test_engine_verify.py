@@ -39,6 +39,22 @@ class TestVisionEngineCore(unittest.TestCase):
         self.engine.set_mode(1)
         self.assertEqual(self.engine.current_mode, 1)
 
+    def test_health_check_endpoint(self):
+        """Verify the health check endpoint returns proper schema."""
+        from fastapi.testclient import TestClient
+        import app
+
+        # Assign test engine instance to app module
+        app.engine = self.engine
+        client = TestClient(app.app)
+        response = client.get("/health")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("status"), "healthy")
+        self.assertTrue(data.get("engine_active"))
+        self.assertEqual(data.get("service"), "Sahra-Eye Vision Engine")
+        self.assertIn("timestamp", data)
+
 
 if __name__ == "__main__":
     unittest.main()

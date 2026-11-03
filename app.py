@@ -241,6 +241,24 @@ async def switch_source(request: Request):
     return JSONResponse(content={"status": "ok", "source": os.path.basename(file_path)})
 
 
+@app.get("/health")
+async def health_check():
+    """System health check endpoint for monitoring, uptime, and automated probes."""
+    engine_alive = engine is not None
+    current_source = engine.source_name if engine_alive else "offline"
+    mode = engine.current_mode if engine_alive else 0
+    return JSONResponse(
+        content={
+            "status": "healthy" if engine_alive else "degraded",
+            "service": "Sahra-Eye Vision Engine",
+            "engine_active": engine_alive,
+            "mode": mode,
+            "source": current_source,
+            "timestamp": time.time(),
+        }
+    )
+
+
 @app.post("/clear_alerts")
 async def clear_alerts():
     """Clear all active fallen victim markers and alerts (operator dismissal)."""
