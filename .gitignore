@@ -8,7 +8,12 @@ __pycache__/
 .env
 *.env
 
-# Local media uploads & exports
+# Local media uploads, sample videos & exports
 uploads/
 architecture.html
 *.log
+*.mp4
+*.avi
+*.mkv
+Gemini_Generated_Image_*.jpg
+Screenshot*.png
